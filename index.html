@@ -7,528 +7,139 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0a0a0c;
-    --bg2: #111116;
-    --bg3: #18181f;
-    --border: rgba(255,255,255,0.06);
-    --border-hover: rgba(255,255,255,0.12);
-    --text: #e8e6e0;
-    --text-muted: #6b6870;
-    --text-dim: #3d3b42;
-    --accent: #9d7fd4;
-    --accent-dim: rgba(157,127,212,0.12);
-    --accent-glow: rgba(157,127,212,0.25);
-    --red: #c4556a;
-    --red-dim: rgba(196,85,106,0.1);
-    --heart: #c4556a;
+    --bg: #0a0a0c; --bg2: #111116; --bg3: #18181f;
+    --border: rgba(255,255,255,0.06); --border-hover: rgba(255,255,255,0.12);
+    --text: #e8e6e0; --text-muted: #6b6870; --text-dim: #3d3b42;
+    --accent: #9d7fd4; --accent-dim: rgba(157,127,212,0.12);
+    --red: #c4556a; --red-dim: rgba(196,85,106,0.1); --heart: #c4556a;
+    --admin: #e8a24a; --admin-dim: rgba(232,162,74,0.1);
   }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'DM Mono', monospace;
-    font-size: 13px;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* Atmospheric background */
-  body::before {
-    content: '';
-    position: fixed;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(ellipse at 30% 20%, rgba(157,127,212,0.04) 0%, transparent 50%),
-                radial-gradient(ellipse at 70% 80%, rgba(196,85,106,0.03) 0%, transparent 50%);
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .container {
-    max-width: 680px;
-    margin: 0 auto;
-    padding: 0 20px;
-    position: relative;
-    z-index: 1;
-  }
-
-  /* Header */
-  header {
-    padding: 60px 0 40px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 48px;
-  }
-
-  .logo {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 28px;
-    font-weight: 300;
-    letter-spacing: 0.1em;
-    color: var(--text);
-    margin-bottom: 6px;
-  }
-
-  .logo span {
-    color: var(--accent);
-    font-style: italic;
-  }
-
-  .tagline {
-    color: var(--text-muted);
-    font-size: 11px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-  }
-
-  /* Post form */
-  .post-form {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    padding: 24px;
-    margin-bottom: 48px;
-    transition: border-color 0.3s;
-  }
-
-  .post-form:focus-within {
-    border-color: var(--border-hover);
-  }
-
-  .form-label {
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin-bottom: 10px;
-    display: block;
-  }
-
-  .nick-row {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 16px;
-    align-items: center;
-  }
-
-  .nick-prefix {
-    color: var(--accent);
-    font-size: 13px;
-  }
-
-  input[type="text"] {
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid var(--border);
-    color: var(--text);
-    font-family: 'DM Mono', monospace;
-    font-size: 13px;
-    padding: 6px 0;
-    outline: none;
-    width: 180px;
-    transition: border-color 0.2s;
-  }
-
-  input[type="text"]:focus {
-    border-bottom-color: var(--accent);
-  }
-
-  input[type="text"]::placeholder {
-    color: var(--text-dim);
-  }
-
-  textarea {
-    width: 100%;
-    background: transparent;
-    border: none;
-    color: var(--text);
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 18px;
-    font-weight: 300;
-    line-height: 1.7;
-    resize: none;
-    outline: none;
-    min-height: 100px;
-    margin-bottom: 16px;
-  }
-
-  textarea::placeholder {
-    color: var(--text-dim);
-    font-style: italic;
-  }
-
-  .form-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .char-count {
-    color: var(--text-dim);
-    font-size: 11px;
-  }
-
-  .submit-btn {
-    background: transparent;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    padding: 8px 20px;
-    cursor: pointer;
-    transition: all 0.2s;
-    border-radius: 1px;
-  }
-
-  .submit-btn:hover {
-    background: var(--accent-dim);
-  }
-
-  .submit-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
-
-  /* Feed */
-  .feed-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 24px;
-  }
-
-  .feed-title {
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-
-  .feed-line {
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-  }
-
-  /* Confession cards */
-  .confession-card {
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    margin-bottom: 16px;
-    background: var(--bg2);
-    transition: border-color 0.2s;
-    animation: fadeIn 0.4s ease;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  .confession-card:hover {
-    border-color: var(--border-hover);
-  }
-
-  .card-body {
-    padding: 20px 24px;
-  }
-
-  .card-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 14px;
-  }
-
-  .card-nick {
-    color: var(--accent);
-    font-size: 11px;
-    letter-spacing: 0.1em;
-  }
-
-  .card-time {
-    color: var(--text-dim);
-    font-size: 10px;
-  }
-
-  .card-text {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 18px;
-    font-weight: 300;
-    line-height: 1.75;
-    color: var(--text);
-    margin-bottom: 18px;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .card-actions {
-    display: flex;
-    gap: 20px;
-    align-items: center;
-    padding-top: 14px;
-    border-top: 1px solid var(--border);
-  }
-
-  .action-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--text-muted);
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    padding: 4px 0;
-    transition: color 0.2s;
-  }
-
-  .action-btn:hover { color: var(--text); }
-
-  .action-btn.liked { color: var(--heart); }
-
-  .action-btn.reply-btn:hover { color: var(--accent); }
-
-  .action-btn.report-btn:hover { color: var(--red); }
-
-  .action-btn svg {
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-  }
-
-  .action-btn.liked svg { fill: var(--heart); stroke: var(--heart); }
-
-  /* Replies section */
-  .replies-section {
-    border-top: 1px solid var(--border);
-    background: var(--bg);
-  }
-
-  .replies-section.hidden { display: none; }
-
-  .reply-item {
-    padding: 14px 24px;
-    border-bottom: 1px solid var(--border);
-    animation: fadeIn 0.3s ease;
-  }
-
-  .reply-item:last-child { border-bottom: none; }
-
-  .reply-meta {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    margin-bottom: 8px;
-  }
-
-  .reply-nick { color: var(--accent); font-size: 10px; letter-spacing: 0.1em; }
-  .reply-time { color: var(--text-dim); font-size: 10px; }
-
-  .reply-text {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 16px;
-    font-weight: 300;
-    line-height: 1.65;
-    color: rgba(232,230,224,0.8);
-  }
-
-  .reply-form {
-    padding: 14px 24px;
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    border-top: 1px solid var(--border);
-    background: var(--bg3);
-  }
-
-  .reply-input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid var(--border);
-    color: var(--text);
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 15px;
-    padding: 4px 0;
-    outline: none;
-    transition: border-color 0.2s;
-    width: 100%;
-  }
-
-  .reply-input:focus { border-bottom-color: var(--accent); }
-  .reply-input::placeholder { color: var(--text-dim); font-style: italic; }
-
-  .reply-submit {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    font-family: 'DM Mono', monospace;
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    padding: 6px 14px;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-    margin-top: 2px;
-  }
-
-  .reply-submit:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-
-  /* Report modal */
-  .modal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.85);
-    z-index: 100;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .modal-overlay.active { display: flex; }
-
-  .modal {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    padding: 28px;
-    width: 360px;
-    max-width: 90vw;
-  }
-
-  .modal-title {
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--red);
-    margin-bottom: 16px;
-  }
-
-  .modal-text {
-    color: var(--text-muted);
-    font-size: 12px;
-    line-height: 1.6;
-    margin-bottom: 20px;
-  }
-
-  .modal-actions {
-    display: flex;
-    gap: 10px;
-    justify-content: flex-end;
-  }
-
-  .modal-cancel {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    padding: 8px 16px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .modal-cancel:hover { border-color: var(--border-hover); color: var(--text); }
-
-  .modal-confirm {
-    background: var(--red-dim);
-    border: 1px solid var(--red);
-    color: var(--red);
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    padding: 8px 16px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .modal-confirm:hover { background: rgba(196,85,106,0.2); }
-
-  /* Toast */
-  .toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%) translateY(80px);
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    padding: 10px 20px;
-    border-radius: 1px;
-    transition: transform 0.3s ease;
-    z-index: 200;
-    white-space: nowrap;
-  }
-
-  .toast.show { transform: translateX(-50%) translateY(0); }
-
-  /* Loading */
-  .loading {
-    text-align: center;
-    color: var(--text-dim);
-    padding: 40px;
-    font-size: 11px;
-    letter-spacing: 0.2em;
-  }
-
-  .empty {
-    text-align: center;
-    color: var(--text-dim);
-    padding: 60px 20px;
-    font-family: 'Cormorant Garamond', serif;
-    font-style: italic;
-    font-size: 18px;
-  }
-
-  /* Firebase config banner */
-  .config-banner {
-    background: rgba(157,127,212,0.08);
-    border: 1px solid rgba(157,127,212,0.2);
-    border-radius: 2px;
-    padding: 16px 20px;
-    margin-bottom: 32px;
-    font-size: 11px;
-    color: var(--accent);
-    line-height: 1.8;
-  }
-
-  .config-banner strong { color: var(--text); }
-
-  footer {
-    padding: 48px 0 32px;
-    text-align: center;
-    color: var(--text-dim);
-    font-size: 10px;
-    letter-spacing: 0.15em;
-  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'DM Mono',monospace; font-size:13px; min-height:100vh; overflow-x:hidden; }
+  body::before { content:''; position:fixed; top:-50%; left:-50%; width:200%; height:200%; background:radial-gradient(ellipse at 30% 20%,rgba(157,127,212,0.04) 0%,transparent 50%),radial-gradient(ellipse at 70% 80%,rgba(196,85,106,0.03) 0%,transparent 50%); pointer-events:none; z-index:0; }
+  .container { max-width:680px; margin:0 auto; padding:0 20px; position:relative; z-index:1; }
+  header { padding:60px 0 40px; border-bottom:1px solid var(--border); margin-bottom:48px; }
+  .logo { font-family:'Cormorant Garamond',serif; font-size:28px; font-weight:300; letter-spacing:0.1em; margin-bottom:6px; }
+  .logo span { color:var(--accent); font-style:italic; }
+  .tagline { color:var(--text-muted); font-size:11px; letter-spacing:0.15em; text-transform:uppercase; }
+  .post-form { background:var(--bg2); border:1px solid var(--border); border-radius:2px; padding:24px; margin-bottom:48px; transition:border-color 0.3s; }
+  .post-form:focus-within { border-color:var(--border-hover); }
+  .form-label { font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; display:block; }
+  .nick-row { display:flex; gap:10px; margin-bottom:16px; align-items:center; }
+  .nick-prefix { color:var(--accent); }
+  input[type="text"] { background:transparent; border:none; border-bottom:1px solid var(--border); color:var(--text); font-family:'DM Mono',monospace; font-size:13px; padding:6px 0; outline:none; width:180px; transition:border-color 0.2s; }
+  input[type="text"]:focus { border-bottom-color:var(--accent); }
+  input[type="text"]::placeholder { color:var(--text-dim); }
+  textarea { width:100%; background:transparent; border:none; color:var(--text); font-family:'Cormorant Garamond',serif; font-size:18px; font-weight:300; line-height:1.7; resize:none; outline:none; min-height:100px; margin-bottom:16px; }
+  textarea::placeholder { color:var(--text-dim); font-style:italic; }
+  .form-footer { display:flex; justify-content:space-between; align-items:center; }
+  .char-count { color:var(--text-dim); font-size:11px; }
+  .submit-btn { background:transparent; border:1px solid var(--accent); color:var(--accent); font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.15em; text-transform:uppercase; padding:8px 20px; cursor:pointer; transition:all 0.2s; border-radius:1px; }
+  .submit-btn:hover { background:var(--accent-dim); }
+  .submit-btn:disabled { opacity:0.3; cursor:not-allowed; }
+  .feed-header { display:flex; align-items:center; gap:12px; margin-bottom:24px; }
+  .feed-title { font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:var(--text-muted); }
+  .feed-line { flex:1; height:1px; background:var(--border); }
+  .confession-card { border:1px solid var(--border); border-radius:2px; margin-bottom:16px; background:var(--bg2); transition:border-color 0.2s; animation:fadeIn 0.4s ease; }
+  .confession-card.reported-card { border-color:rgba(196,85,106,0.2); }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .confession-card:hover { border-color:var(--border-hover); }
+  .card-body { padding:20px 24px; }
+  .card-meta { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .card-nick { color:var(--accent); font-size:11px; letter-spacing:0.1em; }
+  .card-time { color:var(--text-dim); font-size:10px; }
+  .card-text { font-family:'Cormorant Garamond',serif; font-size:18px; font-weight:300; line-height:1.75; color:var(--text); margin-bottom:18px; white-space:pre-wrap; word-break:break-word; }
+  .card-actions { display:flex; gap:20px; align-items:center; padding-top:14px; border-top:1px solid var(--border); }
+  .action-btn { background:none; border:none; cursor:pointer; display:flex; align-items:center; gap:6px; color:var(--text-muted); font-family:'DM Mono',monospace; font-size:11px; padding:4px 0; transition:color 0.2s; }
+  .action-btn:hover { color:var(--text); }
+  .action-btn.liked { color:var(--heart); }
+  .action-btn.reply-btn:hover { color:var(--accent); }
+  .action-btn.report-btn:hover { color:var(--red); }
+  .action-btn svg { width:14px; height:14px; flex-shrink:0; }
+  .action-btn.liked svg { fill:var(--heart); stroke:var(--heart); }
+  .report-badge { margin-left:auto; background:var(--red-dim); border:1px solid rgba(196,85,106,0.3); color:var(--red); font-size:10px; padding:2px 8px; border-radius:1px; }
+  .replies-section { border-top:1px solid var(--border); background:var(--bg); }
+  .replies-section.hidden { display:none; }
+  .reply-item { padding:14px 24px; border-bottom:1px solid var(--border); animation:fadeIn 0.3s ease; }
+  .reply-item:last-child { border-bottom:none; }
+  .reply-meta { display:flex; gap:12px; align-items:center; margin-bottom:8px; }
+  .reply-nick { color:var(--accent); font-size:10px; }
+  .reply-time { color:var(--text-dim); font-size:10px; }
+  .reply-text { font-family:'Cormorant Garamond',serif; font-size:16px; font-weight:300; line-height:1.65; color:rgba(232,230,224,0.8); }
+  .reply-form { padding:14px 24px; display:flex; gap:10px; align-items:flex-start; border-top:1px solid var(--border); background:var(--bg3); }
+  .reply-input { flex:1; background:transparent; border:none; border-bottom:1px solid var(--border); color:var(--text); font-family:'Cormorant Garamond',serif; font-size:15px; padding:4px 0; outline:none; transition:border-color 0.2s; }
+  .reply-input:focus { border-bottom-color:var(--accent); }
+  .reply-input::placeholder { color:var(--text-dim); font-style:italic; }
+  .reply-submit { background:none; border:1px solid var(--border); color:var(--text-muted); font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.1em; padding:6px 14px; cursor:pointer; transition:all 0.2s; white-space:nowrap; margin-top:2px; }
+  .reply-submit:hover { border-color:var(--accent); color:var(--accent); }
+  .admin-trigger { position:fixed; bottom:24px; right:24px; width:36px; height:36px; background:var(--bg2); border:1px solid var(--border); border-radius:2px; cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:0.3; transition:all 0.2s; z-index:50; }
+  .admin-trigger:hover { opacity:1; border-color:var(--admin); }
+  .admin-trigger svg { width:14px; height:14px; stroke:var(--admin); }
+  .admin-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:200; overflow-y:auto; }
+  .admin-overlay.active { display:block; }
+  .admin-panel { max-width:760px; margin:0 auto; padding:40px 24px; }
+  .admin-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:32px; padding-bottom:16px; border-bottom:1px solid var(--border); }
+  .admin-title { font-size:10px; letter-spacing:0.25em; text-transform:uppercase; color:var(--admin); }
+  .admin-close { background:none; border:1px solid var(--border); color:var(--text-muted); font-family:'DM Mono',monospace; font-size:11px; padding:6px 14px; cursor:pointer; transition:all 0.2s; }
+  .admin-close:hover { border-color:var(--border-hover); color:var(--text); }
+  .admin-tabs { display:flex; gap:2px; margin-bottom:24px; }
+  .admin-tab { background:none; border:1px solid var(--border); color:var(--text-muted); font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.15em; text-transform:uppercase; padding:8px 16px; cursor:pointer; transition:all 0.2s; }
+  .admin-tab.active { border-color:var(--admin); color:var(--admin); background:var(--admin-dim); }
+  .admin-section { display:none; }
+  .admin-section.active { display:block; }
+  .admin-card { background:var(--bg2); border:1px solid var(--border); border-radius:2px; margin-bottom:12px; padding:18px 20px; animation:fadeIn 0.3s ease; }
+  .admin-card.has-reports { border-color:rgba(196,85,106,0.25); }
+  .admin-card-meta { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .admin-card-nick { color:var(--accent); font-size:11px; }
+  .admin-card-info { display:flex; gap:12px; align-items:center; }
+  .admin-card-time { color:var(--text-dim); font-size:10px; }
+  .report-count { background:var(--red-dim); border:1px solid rgba(196,85,106,0.3); color:var(--red); font-size:10px; padding:2px 8px; }
+  .admin-card-text { font-family:'Cormorant Garamond',serif; font-size:16px; font-weight:300; line-height:1.65; color:var(--text); margin-bottom:14px; white-space:pre-wrap; word-break:break-word; }
+  .admin-card-actions { display:flex; gap:10px; }
+  .admin-btn-delete { background:var(--red-dim); border:1px solid rgba(196,85,106,0.4); color:var(--red); font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.1em; padding:6px 14px; cursor:pointer; transition:all 0.2s; }
+  .admin-btn-delete:hover { background:rgba(196,85,106,0.2); }
+  .admin-btn-clear { background:none; border:1px solid var(--border); color:var(--text-muted); font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.1em; padding:6px 14px; cursor:pointer; transition:all 0.2s; }
+  .admin-btn-clear:hover { border-color:var(--border-hover); color:var(--text); }
+  .admin-replies { margin-top:12px; border-top:1px solid var(--border); padding-top:12px; }
+  .admin-reply-item { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); }
+  .admin-reply-item:last-child { border-bottom:none; }
+  .admin-reply-text { font-family:'Cormorant Garamond',serif; font-size:14px; font-weight:300; color:rgba(232,230,224,0.7); flex:1; }
+  .admin-reply-nick { color:var(--accent); font-size:10px; margin-bottom:4px; }
+  .admin-btn-delete-reply { background:none; border:1px solid rgba(196,85,106,0.2); color:var(--red); font-family:'DM Mono',monospace; font-size:10px; padding:4px 10px; cursor:pointer; transition:all 0.2s; white-space:nowrap; flex-shrink:0; }
+  .admin-btn-delete-reply:hover { background:var(--red-dim); }
+  .admin-empty { text-align:center; color:var(--text-dim); padding:40px; font-size:11px; letter-spacing:0.15em; }
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:100; align-items:center; justify-content:center; }
+  .modal-overlay.active { display:flex; }
+  .modal { background:var(--bg2); border:1px solid var(--border); border-radius:2px; padding:28px; width:320px; max-width:90vw; }
+  .modal-title { font-size:10px; letter-spacing:0.2em; text-transform:uppercase; margin-bottom:16px; }
+  .admin-modal-title { color:var(--admin); }
+  .report-modal-title { color:var(--red); }
+  .modal-input { width:100%; background:transparent; border:none; border-bottom:1px solid var(--border); color:var(--text); font-family:'DM Mono',monospace; font-size:13px; padding:8px 0; outline:none; margin-bottom:20px; transition:border-color 0.2s; }
+  .modal-input:focus { border-bottom-color:var(--admin); }
+  .modal-input::placeholder { color:var(--text-dim); }
+  .modal-error { color:var(--red); font-size:11px; margin-bottom:12px; display:none; }
+  .modal-error.show { display:block; }
+  .modal-text { color:var(--text-muted); font-size:12px; line-height:1.6; margin-bottom:20px; }
+  .modal-actions { display:flex; gap:10px; justify-content:flex-end; }
+  .modal-cancel { background:none; border:1px solid var(--border); color:var(--text-muted); font-family:'DM Mono',monospace; font-size:11px; padding:8px 16px; cursor:pointer; transition:all 0.2s; }
+  .modal-cancel:hover { border-color:var(--border-hover); color:var(--text); }
+  .modal-confirm-admin { background:var(--admin-dim); border:1px solid var(--admin); color:var(--admin); font-family:'DM Mono',monospace; font-size:11px; padding:8px 16px; cursor:pointer; transition:all 0.2s; }
+  .modal-confirm-admin:hover { background:rgba(232,162,74,0.2); }
+  .modal-confirm-report { background:var(--red-dim); border:1px solid var(--red); color:var(--red); font-family:'DM Mono',monospace; font-size:11px; padding:8px 16px; cursor:pointer; transition:all 0.2s; }
+  .modal-confirm-report:hover { background:rgba(196,85,106,0.2); }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--bg3); border:1px solid var(--border); color:var(--text-muted); font-size:11px; letter-spacing:0.1em; padding:10px 20px; border-radius:1px; transition:transform 0.3s ease; z-index:300; white-space:nowrap; }
+  .toast.show { transform:translateX(-50%) translateY(0); }
+  .loading { text-align:center; color:var(--text-dim); padding:40px; font-size:11px; letter-spacing:0.2em; }
+  .empty { text-align:center; color:var(--text-dim); padding:60px 20px; font-family:'Cormorant Garamond',serif; font-style:italic; font-size:18px; }
+  footer { padding:48px 0 32px; text-align:center; color:var(--text-dim); font-size:10px; letter-spacing:0.15em; }
 </style>
 </head>
 <body>
-
 <div class="container">
   <header>
     <div class="logo">Say It <span>Anonymously</span></div>
     <div class="tagline">No names. No judgment. Just honesty.</div>
   </header>
-
-  <!-- ⚠️ REMOVE THIS BANNER AFTER ADDING YOUR FIREBASE CONFIG BELOW -->
-  <div class="config-banner" id="configBanner">
-    ⚠️ <strong>Setup required:</strong> Replace the Firebase config in the &lt;script&gt; at the bottom of this file with your own Firebase project credentials. 
-    Get them from <strong>console.firebase.google.com</strong> → Your project → Project Settings → Web app config.
-  </div>
-
-  <!-- Post form -->
   <div class="post-form">
     <label class="form-label">Your confession</label>
     <div class="nick-row">
@@ -541,40 +152,65 @@
       <button class="submit-btn" id="submitBtn" onclick="submitConfession()">Post it</button>
     </div>
   </div>
-
-  <!-- Feed -->
   <div class="feed-header">
     <span class="feed-title">Confessions</span>
     <div class="feed-line"></div>
   </div>
-
   <div id="feed"><div class="loading">loading...</div></div>
-
   <footer>say it anonymously &mdash; no logs, no traces</footer>
 </div>
 
-<!-- Report modal -->
-<div class="modal-overlay" id="reportModal">
+<button class="admin-trigger" onclick="openAdminLogin()" title="Admin">
+  <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+  </svg>
+</button>
+
+<div class="admin-overlay" id="adminPanel">
+  <div class="admin-panel">
+    <div class="admin-header">
+      <span class="admin-title">Admin Panel</span>
+      <button class="admin-close" onclick="closeAdmin()">Close</button>
+    </div>
+    <div class="admin-tabs">
+      <button class="admin-tab active" onclick="switchTab('reported')">Reported</button>
+      <button class="admin-tab" onclick="switchTab('all')">All posts</button>
+    </div>
+    <div class="admin-section active" id="tab-reported"><div id="reported-list"><div class="admin-empty">loading...</div></div></div>
+    <div class="admin-section" id="tab-all"><div id="all-list"><div class="admin-empty">loading...</div></div></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="passwordModal">
   <div class="modal">
-    <div class="modal-title">Report confession</div>
-    <div class="modal-text">Is this confession harmful, abusive, or violating community guidelines? We'll review it.</div>
+    <div class="modal-title admin-modal-title">Admin access</div>
+    <input type="password" class="modal-input" id="adminPassword" placeholder="enter password" onkeydown="if(event.key==='Enter')checkPassword()">
+    <div class="modal-error" id="passwordError">incorrect password</div>
     <div class="modal-actions">
-      <button class="modal-cancel" onclick="closeReport()">Cancel</button>
-      <button class="modal-confirm" onclick="confirmReport()">Report</button>
+      <button class="modal-cancel" onclick="closePasswordModal()">Cancel</button>
+      <button class="modal-confirm-admin" onclick="checkPassword()">Enter</button>
     </div>
   </div>
 </div>
 
-<!-- Toast -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal">
+    <div class="modal-title report-modal-title">Report confession</div>
+    <div class="modal-text">Is this confession harmful or abusive? It will be flagged for admin review.</div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeReport()">Cancel</button>
+      <button class="modal-confirm-report" onclick="confirmReport()">Report</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
-<!-- Firebase SDK -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import { getFirestore, collection, addDoc, getDocs, updateDoc, doc, onSnapshot, query, orderBy, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-  // 🔥 REPLACE THIS WITH YOUR FIREBASE CONFIG
-const firebaseConfig = {
+  const firebaseConfig = {
     apiKey: "AIzaSyDRVZQ7EESlC60lBKzHwR0G_ZZZi-kw6Ms",
     authDomain: "say-it-anonymously.firebaseapp.com",
     projectId: "say-it-anonymously",
@@ -585,67 +221,54 @@ const firebaseConfig = {
 
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
-
-  // Hide config banner if config looks real
-  if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
-    document.getElementById('configBanner').style.display = 'none';
-  }
-
-  // Track liked posts in localStorage
+  const ADMIN_PASSWORD = "Oranges";
+  let isAdmin = false;
   const liked = JSON.parse(localStorage.getItem('liked') || '{}');
   const reported = JSON.parse(localStorage.getItem('reported') || '{}');
 
-  // Format timestamp
   function timeAgo(ts) {
     if (!ts) return 'just now';
-    const seconds = Math.floor((Date.now() - ts.toMillis()) / 1000);
-    if (seconds < 60) return 'just now';
-    if (seconds < 3600) return `${Math.floor(seconds/60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds/3600)}h ago`;
-    return `${Math.floor(seconds/86400)}d ago`;
+    const s = Math.floor((Date.now() - ts.toMillis()) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.floor(s/60)}m ago`;
+    if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+    return `${Math.floor(s/86400)}d ago`;
   }
 
-  // Render feed
+  function esc(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
   function renderFeed(confessions) {
     const feed = document.getElementById('feed');
-    if (confessions.length === 0) {
-      feed.innerHTML = '<div class="empty">No confessions yet. Be the first.</div>';
-      return;
-    }
+    if (!confessions.length) { feed.innerHTML = '<div class="empty">No confessions yet. Be the first.</div>'; return; }
     feed.innerHTML = '';
     confessions.forEach(conf => {
       const isLiked = liked[conf.id];
       const isReported = reported[conf.id];
+      const hasReports = (conf.reports || 0) > 0;
       const card = document.createElement('div');
-      card.className = 'confession-card';
+      card.className = `confession-card${hasReports ? ' reported-card' : ''}`;
       card.id = `card-${conf.id}`;
       card.innerHTML = `
         <div class="card-body">
           <div class="card-meta">
-            <span class="card-nick">~${conf.nickname || 'anon'}</span>
+            <span class="card-nick">~${esc(conf.nickname||'anon')}</span>
             <span class="card-time">${timeAgo(conf.createdAt)}</span>
           </div>
-          <div class="card-text">${escapeHtml(conf.text)}</div>
+          <div class="card-text">${esc(conf.text)}</div>
           <div class="card-actions">
-            <button class="action-btn ${isLiked ? 'liked' : ''}" id="like-${conf.id}" onclick="toggleLike('${conf.id}', ${conf.likes || 0})">
-              <svg viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
-                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-              </svg>
-              <span id="likes-${conf.id}">${conf.likes || 0}</span>
+            <button class="action-btn ${isLiked?'liked':''}" id="like-${conf.id}" onclick="toggleLike('${conf.id}',${conf.likes||0})">
+              <svg viewBox="0 0 24 24" fill="${isLiked?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              <span id="likes-${conf.id}">${conf.likes||0}</span>
             </button>
             <button class="action-btn reply-btn" onclick="toggleReplies('${conf.id}')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-              <span id="replycount-${conf.id}">${conf.replyCount || 0}</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span id="replycount-${conf.id}">${conf.replyCount||0}</span>
             </button>
-            <button class="action-btn report-btn" onclick="openReport('${conf.id}')" ${isReported ? 'disabled style="opacity:0.3"' : ''}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-              ${isReported ? 'reported' : 'report'}
+            <button class="action-btn report-btn" onclick="openReport('${conf.id}')" ${isReported?'disabled style="opacity:0.3"':''}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              ${isReported?'reported':'report'}
             </button>
+            ${hasReports?`<span class="report-badge">${conf.reports} report${conf.reports>1?'s':''}</span>`:''}
           </div>
         </div>
         <div class="replies-section hidden" id="replies-${conf.id}">
@@ -654,149 +277,171 @@ const firebaseConfig = {
             <input class="reply-input" id="reply-input-${conf.id}" placeholder="Write a reply..." maxlength="300">
             <button class="reply-submit" onclick="submitReply('${conf.id}')">reply</button>
           </div>
-        </div>
-      `;
+        </div>`;
       feed.appendChild(card);
     });
   }
 
-  function escapeHtml(text) {
-    return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  // Live feed listener
-  const q = query(collection(db, 'confessions'), orderBy('createdAt', 'desc'));
-  onSnapshot(q, (snapshot) => {
-    const confessions = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderFeed(confessions);
+  onSnapshot(query(collection(db,'confessions'),orderBy('createdAt','desc')), snap => {
+    renderFeed(snap.docs.map(d=>({id:d.id,...d.data()})));
   });
 
-  // Submit confession
   window.submitConfession = async function() {
-    const nick = document.getElementById('nickname').value.trim() || 'anon';
+    const nick = document.getElementById('nickname').value.trim()||'anon';
     const text = document.getElementById('confessionText').value.trim();
     if (!text) return;
     const btn = document.getElementById('submitBtn');
-    btn.disabled = true;
-    btn.textContent = 'posting...';
+    btn.disabled = true; btn.textContent = 'posting...';
     try {
-      await addDoc(collection(db, 'confessions'), {
-        nickname: nick,
-        text,
-        likes: 0,
-        replyCount: 0,
-        reports: 0,
-        createdAt: serverTimestamp()
-      });
+      await addDoc(collection(db,'confessions'),{nickname:nick,text,likes:0,replyCount:0,reports:0,createdAt:serverTimestamp()});
       document.getElementById('confessionText').value = '';
       document.getElementById('charCount').textContent = '0';
       showToast('confession posted');
-    } catch(e) {
-      showToast('error — check firebase config');
-    }
-    btn.disabled = false;
-    btn.textContent = 'Post it';
+    } catch(e) { showToast('error posting'); }
+    btn.disabled = false; btn.textContent = 'Post it';
   };
 
-  // Toggle like
   window.toggleLike = async function(id, current) {
     if (liked[id]) return;
-    liked[id] = true;
-    localStorage.setItem('liked', JSON.stringify(liked));
+    liked[id] = true; localStorage.setItem('liked',JSON.stringify(liked));
     const btn = document.getElementById(`like-${id}`);
-    btn.classList.add('liked');
-    btn.querySelector('svg').setAttribute('fill', 'currentColor');
-    document.getElementById(`likes-${id}`).textContent = current + 1;
-    await updateDoc(doc(db, 'confessions', id), { likes: increment(1) });
+    btn.classList.add('liked'); btn.querySelector('svg').setAttribute('fill','currentColor');
+    document.getElementById(`likes-${id}`).textContent = current+1;
+    await updateDoc(doc(db,'confessions',id),{likes:increment(1)});
   };
 
-  // Toggle replies
   window.toggleReplies = async function(id) {
-    const section = document.getElementById(`replies-${id}`);
-    const isHidden = section.classList.contains('hidden');
-    section.classList.toggle('hidden');
-    if (isHidden) {
-      loadReplies(id);
-    }
+    const s = document.getElementById(`replies-${id}`);
+    s.classList.toggle('hidden');
+    if (!s.classList.contains('hidden')) loadReplies(id);
   };
 
-  // Load replies
-  async function loadReplies(confId) {
+  function loadReplies(confId) {
     const list = document.getElementById(`replies-list-${confId}`);
-    list.innerHTML = '<div class="loading" style="padding:16px 24px">loading replies...</div>';
-    const q = query(collection(db, 'confessions', confId, 'replies'), orderBy('createdAt', 'asc'));
-    onSnapshot(q, (snap) => {
-      if (snap.empty) {
-        list.innerHTML = '';
-        return;
-      }
-      list.innerHTML = snap.docs.map(d => {
-        const r = d.data();
-        return `<div class="reply-item">
-          <div class="reply-meta">
-            <span class="reply-nick">~${r.nickname || 'anon'}</span>
-            <span class="reply-time">${timeAgo(r.createdAt)}</span>
-          </div>
-          <div class="reply-text">${escapeHtml(r.text)}</div>
-        </div>`;
-      }).join('');
+    list.innerHTML = '<div class="loading" style="padding:16px 24px">loading...</div>';
+    onSnapshot(query(collection(db,'confessions',confId,'replies'),orderBy('createdAt','asc')), snap => {
+      if (snap.empty) { list.innerHTML=''; return; }
+      list.innerHTML = snap.docs.map(d=>{const r=d.data();return`<div class="reply-item"><div class="reply-meta"><span class="reply-nick">~${esc(r.nickname||'anon')}</span><span class="reply-time">${timeAgo(r.createdAt)}</span></div><div class="reply-text">${esc(r.text)}</div></div>`;}).join('');
     });
   }
 
-  // Submit reply
   window.submitReply = async function(confId) {
-    const nick = document.getElementById('nickname').value.trim() || 'anon';
+    const nick = document.getElementById('nickname').value.trim()||'anon';
     const input = document.getElementById(`reply-input-${confId}`);
-    const text = input.value.trim();
-    if (!text) return;
+    const text = input.value.trim(); if (!text) return;
     input.value = '';
-    await addDoc(collection(db, 'confessions', confId, 'replies'), {
-      nickname: nick,
-      text,
-      createdAt: serverTimestamp()
-    });
-    await updateDoc(doc(db, 'confessions', confId), { replyCount: increment(1) });
+    await addDoc(collection(db,'confessions',confId,'replies'),{nickname:nick,text,createdAt:serverTimestamp()});
+    await updateDoc(doc(db,'confessions',confId),{replyCount:increment(1)});
   };
 
-  // Report
   let reportTarget = null;
-  window.openReport = function(id) {
-    reportTarget = id;
-    document.getElementById('reportModal').classList.add('active');
-  };
-  window.closeReport = function() {
-    document.getElementById('reportModal').classList.remove('active');
-    reportTarget = null;
-  };
+  window.openReport = function(id) { reportTarget=id; document.getElementById('reportModal').classList.add('active'); };
+  window.closeReport = function() { document.getElementById('reportModal').classList.remove('active'); reportTarget=null; };
   window.confirmReport = async function() {
     if (!reportTarget) return;
-    reported[reportTarget] = true;
-    localStorage.setItem('reported', JSON.stringify(reported));
-    await updateDoc(doc(db, 'confessions', reportTarget), { reports: increment(1) });
-    closeReport();
-    showToast('reported — thank you');
+    reported[reportTarget]=true; localStorage.setItem('reported',JSON.stringify(reported));
+    await updateDoc(doc(db,'confessions',reportTarget),{reports:increment(1)});
+    closeReport(); showToast('reported — thank you');
   };
 
-  // Toast
-  function showToast(msg) {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2500);
+  window.openAdminLogin = function() {
+    if (isAdmin) { openAdmin(); return; }
+    document.getElementById('adminPassword').value='';
+    document.getElementById('passwordError').classList.remove('show');
+    document.getElementById('passwordModal').classList.add('active');
+    setTimeout(()=>document.getElementById('adminPassword').focus(),100);
+  };
+  window.closePasswordModal = function() { document.getElementById('passwordModal').classList.remove('active'); };
+  window.checkPassword = function() {
+    if (document.getElementById('adminPassword').value===ADMIN_PASSWORD) {
+      document.getElementById('passwordModal').classList.remove('active');
+      isAdmin=true; openAdmin();
+    } else {
+      document.getElementById('passwordError').classList.add('show');
+      document.getElementById('adminPassword').value='';
+      document.getElementById('adminPassword').focus();
+    }
+  };
+
+  window.openAdmin = function() { document.getElementById('adminPanel').classList.add('active'); loadAdminData(); };
+  window.closeAdmin = function() { document.getElementById('adminPanel').classList.remove('active'); };
+  window.switchTab = function(tab) {
+    document.querySelectorAll('.admin-tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='reported')||(i===1&&tab==='all')));
+    document.getElementById('tab-reported').classList.toggle('active',tab==='reported');
+    document.getElementById('tab-all').classList.toggle('active',tab==='all');
+  };
+
+  async function loadAdminData() {
+    const snap = await getDocs(query(collection(db,'confessions'),orderBy('createdAt','desc')));
+    const all = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const reps = all.filter(c=>(c.reports||0)>0).sort((a,b)=>(b.reports||0)-(a.reports||0));
+    renderAdminList('reported-list', reps, true);
+    renderAdminList('all-list', all, false);
   }
 
-  // Char counter
-  document.getElementById('confessionText').addEventListener('input', function() {
-    document.getElementById('charCount').textContent = this.value.length;
-  });
-
-  // Enter to submit reply
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && e.target.classList.contains('reply-input')) {
-      const id = e.target.id.replace('reply-input-', '');
-      window.submitReply(id);
+  async function renderAdminList(containerId, items, reportedOnly) {
+    const container = document.getElementById(containerId);
+    if (!items.length) { container.innerHTML=`<div class="admin-empty">${reportedOnly?'no reported confessions':'no confessions yet'}</div>`; return; }
+    container.innerHTML='';
+    for (const conf of items) {
+      const repliesSnap = await getDocs(query(collection(db,'confessions',conf.id,'replies'),orderBy('createdAt','asc')));
+      const replies = repliesSnap.docs.map(d=>({id:d.id,...d.data()}));
+      const card = document.createElement('div');
+      card.className=`admin-card${(conf.reports||0)>0?' has-reports':''}`;
+      card.id=`admin-card-${conf.id}`;
+      card.innerHTML=`
+        <div class="admin-card-meta">
+          <span class="admin-card-nick">~${esc(conf.nickname||'anon')}</span>
+          <div class="admin-card-info">
+            ${(conf.reports||0)>0?`<span class="report-count">⚠ ${conf.reports} report${conf.reports>1?'s':''}</span>`:''}
+            <span class="admin-card-time">${timeAgo(conf.createdAt)}</span>
+          </div>
+        </div>
+        <div class="admin-card-text">${esc(conf.text)}</div>
+        <div class="admin-card-actions">
+          <button class="admin-btn-delete" onclick="deleteConfession('${conf.id}')">Delete post</button>
+          ${(conf.reports||0)>0?`<button class="admin-btn-clear" onclick="clearReports('${conf.id}')">Clear reports</button>`:''}
+        </div>
+        ${replies.length?`<div class="admin-replies">
+          <div style="font-size:10px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase">Replies (${replies.length})</div>
+          ${replies.map(r=>`<div class="admin-reply-item" id="admin-reply-${r.id}">
+            <div><div class="admin-reply-nick">~${esc(r.nickname||'anon')}</div><div class="admin-reply-text">${esc(r.text)}</div></div>
+            <button class="admin-btn-delete-reply" onclick="deleteReply('${conf.id}','${r.id}')">Delete</button>
+          </div>`).join('')}
+        </div>`:''}`;
+      container.appendChild(card);
     }
-  });
+  }
+
+  window.deleteConfession = async function(id) {
+    if (!confirm('Delete this confession and all its replies?')) return;
+    const rs = await getDocs(collection(db,'confessions',id,'replies'));
+    for (const r of rs.docs) await deleteDoc(r.ref);
+    await deleteDoc(doc(db,'confessions',id));
+    document.getElementById(`admin-card-${id}`)?.remove();
+    showToast('confession deleted');
+  };
+
+  window.deleteReply = async function(confId, replyId) {
+    await deleteDoc(doc(db,'confessions',confId,'replies',replyId));
+    await updateDoc(doc(db,'confessions',confId),{replyCount:increment(-1)});
+    document.getElementById(`admin-reply-${replyId}`)?.remove();
+    showToast('reply deleted');
+  };
+
+  window.clearReports = async function(id) {
+    await updateDoc(doc(db,'confessions',id),{reports:0});
+    document.getElementById(`admin-card-${id}`)?.remove();
+    showToast('reports cleared');
+  };
+
+  function showToast(msg) {
+    const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'),2500);
+  }
+
+  document.getElementById('confessionText').addEventListener('input',function(){document.getElementById('charCount').textContent=this.value.length;});
+  document.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.classList.contains('reply-input'))window.submitReply(e.target.id.replace('reply-input-',''));});
 </script>
 </body>
 </html>
