@@ -793,6 +793,7 @@ function loadSettingsUI(){
   document.getElementById('lockStatus').style.color=siteLocked?'var(--red)':'var(--text-muted)';
   document.getElementById('approvalToggle').checked=approvalMode;
   document.getElementById('approvalStatus').textContent=approvalMode?'on':'off';
+  document.getElementById('autoDeleteDays').value=autoDeleteDays;
   document.getElementById('dailyTopic').value=dailyTopic;
   const presets=['Under maintenance. Back soon.','Taking a break. Back later.','Temporarily closed for moderation.'];
   const preset=document.getElementById('lockReasonPreset'),custom=document.getElementById('lockReasonCustom');
@@ -852,6 +853,21 @@ window.saveCustomWords=function(){
   customWords=val.split(',').map(w=>w.trim().toLowerCase()).filter(Boolean);
   localStorage.setItem('customWords',JSON.stringify(customWords));
   showToast(`${customWords.length} custom word${customWords.length!==1?'s':''} saved`);
+};
+
+window.saveDailyTopic=function(){
+  dailyTopic=document.getElementById('dailyTopic').value.trim();
+  localStorage.setItem('dailyTopic',dailyTopic);
+  applyDailyTopic();
+  showToast(dailyTopic?'daily topic set':'topic cleared');
+};
+
+window.clearDailyTopic=function(){
+  dailyTopic='';
+  localStorage.setItem('dailyTopic','');
+  document.getElementById('dailyTopic').value='';
+  applyDailyTopic();
+  showToast('topic cleared');
 };
 
 function showToast(msg){
