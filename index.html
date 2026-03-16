@@ -429,7 +429,7 @@
     <span id="banReasonText"></span>
   </div>
   <div style="margin-top:24px;display:flex;flex-direction:column;align-items:center;gap:8px;">
-    <input type="password" id="banEscapeInput" placeholder="Admin password to unban yourself" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;padding:10px 16px;outline:none;width:280px;text-align:center;" onkeydown="if(event.key==='Enter')adminUnbanSelf()">
+    <input type="password" id="banEscapeInput" placeholder="Admin password to unban yourself" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;padding:10px 16px;outline:none;width:340px;max-width:90vw;text-align:center;" onkeydown="if(event.key==='Enter')adminUnbanSelf()">
     <button onclick="adminUnbanSelf()" style="background:var(--admin);border:none;color:#0d0d0d;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:9px 24px;border-radius:10px;cursor:pointer;">Unban myself</button>
   </div>
 </div>
@@ -678,11 +678,7 @@ function checkIfBanned(){
   if(isAdmin)return;
   const myNick=(localStorage.getItem('myNick')||'').toLowerCase();
   const overlay=document.getElementById('bannedOverlay');
-  const entry=bannedNames.find(b=>{
-    const nameMatch=myNick&&(b.name||b)===myNick;
-    const browserMatch=b.browserId&&b.browserId===browserId;
-    return nameMatch||browserMatch;
-  });
+  const entry=bannedNames.find(b=>b.browserId&&b.browserId===browserId);
   if(entry){
     overlay.style.display='flex';
     overlay.style.pointerEvents='all';
@@ -817,7 +813,7 @@ window.submitConfession = async function(){
   if(!isAdmin&&slowmodeDelay>0&&Date.now()-lastPostTime<slowmodeDelay*1000)return;
   const rawNick=document.getElementById('nickname').value.trim()||'anon';
   const nick=filterText(rawNick);
-  if(!isAdmin&&bannedNames.some(b=>(b.name||b)===nick.toLowerCase())){showToast('this name is banned');return;}
+  if(!isAdmin&&bannedNames.some(b=>b.browserId&&b.browserId===browserId)){showToast('you are banned');return;}
   const rawText=document.getElementById('confessionText').value.trim();
   if(!rawText)return;
   const text=filterText(rawText);
@@ -930,7 +926,7 @@ window.submitReply = async function(confId){
   if(siteLocked&&!isAdmin){showToast('site is locked');return;}
   const rawNick=document.getElementById('nickname').value.trim()||'anon';
   const nick=filterText(rawNick);
-  if(!isAdmin&&bannedNames.some(b=>(b.name||b)===nick.toLowerCase())){showToast('this name is banned');return;}
+  if(!isAdmin&&bannedNames.some(b=>b.browserId&&b.browserId===browserId)){showToast('you are banned');return;}
   const input=document.getElementById(`reply-input-${confId}`);
   const rawText=input.value.trim();if(!rawText)return;
   const text=filterText(rawText);
@@ -1157,14 +1153,15 @@ window.closeBanModal = function(){
 window.confirmBan = async function(){
   if(!banTarget) return;
   const reason = document.getElementById('banReasonInput').value.trim();
-  const val = banTarget.nick.toLowerCase();
   const bid = banTarget.browserId;
-  bannedNames = bannedNames.filter(b=>(b.name||b)!==val);
-  bannedNames.push({name:val, reason, browserId:bid||null});
+  const val = banTarget.nick.toLowerCase();
+  if(!bid){ showToast('no browser ID — this post was made before tracking'); closeBanModal(); return; }
+  bannedNames = bannedNames.filter(b=>b.browserId!==bid);
+  bannedNames.push({name:val, reason, browserId:bid});
   await setDoc(doc(db,'siteSettings','config'),{bannedNames},{merge:true});
   closeBanModal();
   renderBannedList();
-  showToast(`~${val} banned`);
+  showToast(`browser banned`);
 };
 
 window.unbanNickname=async function(name){
