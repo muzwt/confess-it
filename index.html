@@ -236,7 +236,8 @@
   .modal-confirm-report:hover{opacity:0.88;}
   .profile-modal{background:var(--bg3);border:1px solid var(--border);border-radius:20px;width:480px;max-width:95vw;max-height:80vh;overflow-y:auto;}
   .profile-header{padding:24px 24px 16px;border-bottom:1px solid var(--border);}
-  .profile-avatar{width:48px;height:48px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:#0d0d0d;margin-bottom:12px;}
+  .profile-avatar{width:64px;height:64px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:24px;color:#0d0d0d;margin-bottom:12px;overflow:hidden;flex-shrink:0;}
+  .profile-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
   .profile-username{font-family:'Syne',sans-serif;font-weight:800;font-size:1.2rem;color:var(--text);display:flex;align-items:center;gap:6px;margin-bottom:4px;}
   .profile-joined{font-size:11px;color:var(--text-muted);}
   .profile-stats{display:flex;gap:24px;margin-top:12px;}
@@ -591,6 +592,7 @@
     <div class="profile-header">
       <button class="profile-close" onclick="closeProfile()">✕</button>
       <div class="profile-avatar" id="profileAvatar">?</div>
+      <div id="profileAvatarEdit"></div>
       <div class="profile-username" id="profileUsername">—</div>
       <div class="profile-joined" id="profileJoined"></div>
       <div class="profile-stats">
@@ -711,7 +713,7 @@ window.doLogin = async function(){
     if(snap.empty){err.textContent='username not found';return;}
     const userData=snap.docs[0].data();
     if(userData.password!==hashPassword(password)){err.textContent='incorrect password';return;}
-    currentUser={username:userData.username,uid:snap.docs[0].id};
+    currentUser={username:userData.username,uid:snap.docs[0].id,avatarUrl:userData.avatarUrl||''};
     sessionStorage.setItem('currentUser',JSON.stringify(currentUser));
     localStorage.setItem('myNick',currentUser.username);
     hideAuthScreen();
@@ -767,7 +769,12 @@ window.toggleAnonMode = function(){
 
 function applyUserUI(){
   if(!currentUser) return;
-  document.getElementById('userAvatar').textContent=(currentUser.username[0]||'?').toUpperCase();
+  const avatarEl=document.getElementById('userAvatar');
+  if(currentUser.avatarUrl){
+    avatarEl.innerHTML=`<img src="${currentUser.avatarUrl}" onerror="this.parentElement.innerHTML='${(currentUser.username[0]||'?').toUpperCase()}'">`;
+  } else {
+    avatarEl.textContent=(currentUser.username[0]||'?').toUpperCase();
+  }
   document.getElementById('userNameDisplay').textContent=currentUser.username;
   document.getElementById('menuUsername').textContent='@'+currentUser.username;
   document.getElementById('anonBox').classList.remove('on');
@@ -1640,6 +1647,52 @@ window.sharePost = function(id){
   }
 };
 let currentProfileUser = null;
+const avatarCache = {};
+
+function renderAvatarEl(el, username, avatarUrl){
+  if(avatarUrl){
+    el.innerHTML=`<img src="${esc(avatarUrl)}" onerror="this.parentElement.innerHTML='${(username[0]||'?').toUpperCase()}'">`;
+  } else {
+    el.textContent=(username[0]||'?').toUpperCase();
+  }
+}
+
+function avatarEditHTML(){
+  return`<div style="margin-bottom:12px;">
+    <div style="display:flex;gap:6px;margin-bottom:6px;">
+      <input type="text" id="avatarUrlInput" placeholder="Paste image URL..." class="settings-text-input" style="flex:1;font-size:11px;">
+      <button class="settings-save" onclick="saveAvatar()" style="white-space:nowrap;">Save</button>
+    </div>
+    ${currentUser?.avatarUrl?`<button onclick="removeAvatar()" style="background:none;border:none;color:var(--text-dim);font-size:11px;cursor:pointer;padding:0;font-family:'DM Mono',monospace;">remove photo</button>`:''}
+  </div>`;
+}
+
+window.saveAvatar = async function(){
+  const url=document.getElementById('avatarUrlInput').value.trim();
+  if(!url){showToast('enter an image URL');return;}
+  const snap=await getDocs(query(collection(db,'users'),where('username','==',currentUser.username.toLowerCase())));
+  if(!snap.empty) await updateDoc(snap.docs[0].ref,{avatarUrl:url});
+  currentUser.avatarUrl=url;
+  sessionStorage.setItem('currentUser',JSON.stringify(currentUser));
+  avatarCache[currentUser.username.toLowerCase()]=url;
+  applyUserUI();
+  document.getElementById('avatarUrlInput').value='';
+  document.getElementById('profileAvatarEdit').innerHTML=avatarEditHTML();
+  renderAvatarEl(document.getElementById('profileAvatar'),currentUser.username,url);
+  showToast('profile picture updated!');
+};
+
+window.removeAvatar = async function(){
+  const snap=await getDocs(query(collection(db,'users'),where('username','==',currentUser.username.toLowerCase())));
+  if(!snap.empty) await updateDoc(snap.docs[0].ref,{avatarUrl:''});
+  currentUser.avatarUrl='';
+  sessionStorage.setItem('currentUser',JSON.stringify(currentUser));
+  avatarCache[currentUser.username.toLowerCase()]='';
+  applyUserUI();
+  document.getElementById('profileAvatarEdit').innerHTML=avatarEditHTML();
+  renderAvatarEl(document.getElementById('profileAvatar'),currentUser.username,'');
+  showToast('profile picture removed');
+};
 
 window.openProfile = async function(username, e){
   if(e) e.stopPropagation();
@@ -1647,7 +1700,8 @@ window.openProfile = async function(username, e){
   currentProfileUser = username.toLowerCase();
   document.getElementById('profileModal').classList.add('active');
   document.getElementById('profilePostsList').innerHTML='<div class="loading">loading...</div>';
-  document.getElementById('profileAvatar').textContent=username[0].toUpperCase();
+  renderAvatarEl(document.getElementById('profileAvatar'),username,'');
+  document.getElementById('profileAvatarEdit').innerHTML='';
   document.getElementById('profileUsername').innerHTML='~'+esc(username)+(verifiedUsers.includes(username.toLowerCase())?'<span class="verified-badge">✓</span>':'');
   document.getElementById('profileJoined').textContent='';
   document.getElementById('profilePostCount').textContent='0';
@@ -1659,15 +1713,31 @@ window.openProfile = async function(username, e){
   if(currentUser&&username.toLowerCase()!==currentUser.username.toLowerCase()){
     const isFollowing=following.includes(username.toLowerCase());
     followBtnEl.innerHTML=`<button class="follow-btn${isFollowing?' following':''}" id="followBtn" onclick="toggleFollow('${username.toLowerCase()}')">${isFollowing?'Following':'Follow'}</button>`;
-  } else { followBtnEl.innerHTML=''; }
+  } else {
+    followBtnEl.innerHTML='';
+    // Show edit avatar for own profile
+    if(currentUser&&username.toLowerCase()===currentUser.username.toLowerCase()){
+      document.getElementById('profileAvatarEdit').innerHTML=avatarEditHTML();
+    }
+  }
 
-  // Get user info
+  // Get user info + avatar from Firebase
   try{
     const userSnap=await getDocs(query(collection(db,'users'),where('username','==',username.toLowerCase())));
     if(!userSnap.empty){
       const u=userSnap.docs[0].data();
       if(u.createdAt) document.getElementById('profileJoined').textContent='Joined '+new Date(u.createdAt.toMillis()).toLocaleDateString();
       document.getElementById('profileFollowers').textContent=u.followers||0;
+      if(u.avatarUrl){
+        avatarCache[username.toLowerCase()]=u.avatarUrl;
+        renderAvatarEl(document.getElementById('profileAvatar'),username,u.avatarUrl);
+        // Also update currentUser if it's our profile
+        if(currentUser&&username.toLowerCase()===currentUser.username.toLowerCase()&&!currentUser.avatarUrl){
+          currentUser.avatarUrl=u.avatarUrl;
+          sessionStorage.setItem('currentUser',JSON.stringify(currentUser));
+          applyUserUI();
+        }
+      }
     }
   }catch(e){}
 
