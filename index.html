@@ -776,7 +776,7 @@ function watchOwnedReplies(){
           const r=d.data();
           if(!currentUser||r.nickname!==currentUser.username||anonMode){
             const conf=allConfessions.find(c=>c.id===confId);
-            addNotification(confId,conf?.text||'',r.text||'',r.nickname||'anon');
+            addNotification(confId,conf?.text||'',r.text||'',r.nickname||'anonymous');
           }
         });
       }
@@ -911,7 +911,7 @@ function confessionCard(conf){
     ${conf.pending?'<div class="pending-banner">⏳ Awaiting approval</div>':''}
     <div class="card-body">
       <div class="card-meta">
-        <span class="card-nick">~${esc(conf.nickname||'anon')}</span>
+        <span class="card-nick">~${esc(conf.nickname||'anonymous')}</span>
         <span class="card-time">${timeAgo(conf.createdAt)}</span>
       </div>
       <div class="card-text">${esc(conf.text)}${conf.edited?'<span class="edited-tag">(edited)</span>':''}</div>
@@ -920,7 +920,7 @@ function confessionCard(conf){
           <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
           <span id="likes-${conf.id}">${conf.likes||0}</span>
         </button>
-        <button class="action-btn reply-btn" onclick="toggleReplies('${conf.id}','${esc(conf.nickname||'anon')}')">
+        <button class="action-btn reply-btn" onclick="toggleReplies('${conf.id}','${esc(conf.nickname||'anonymous')}')">
           <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span id="reply-count-${conf.id}">${conf.replyCount||0}</span>
         </button>
@@ -974,7 +974,7 @@ window.submitConfession = async function(){
   if(!isAdmin&&slowmodeDelay>0&&Date.now()-lastPostTime<slowmodeDelay*1000) return;
   if(!currentUser){showAuthScreen();return;}
   if(!isAdmin&&bannedNames.some(b=>(b.name||b)===(currentUser.username||'').toLowerCase())){showToast('you are banned');return;}
-  const nick=anonMode?'anon':filterText(currentUser.username);
+  const nick=anonMode?'anonymous':filterText(currentUser.username);
   const rawText=document.getElementById('confessionText').value.trim();
   if(!rawText) return;
   const text=filterText(rawText);
@@ -1028,7 +1028,7 @@ function loadReplies(confId,confNick){
     list.innerHTML=snap.docs.map(d=>{
       const r=d.data();
       const isOP=confNick&&r.nickname&&currentUser&&r.nickname===currentUser.username&&!anonMode&&myTokens[confId];
-      return`<div class="reply-item"><div class="reply-meta"><span class="reply-nick">~${esc(r.nickname||'anon')}${isOP?'<span class="op-badge">OP</span>':''}</span><span class="reply-time">${timeAgo(r.createdAt)}</span></div><div class="reply-text">${esc(r.text)}</div></div>`;
+      return`<div class="reply-item"><div class="reply-meta"><span class="reply-nick">~${esc(r.nickname||'anonymous')}${isOP?'<span class="op-badge">OP</span>':''}</span><span class="reply-time">${timeAgo(r.createdAt)}</span></div><div class="reply-text">${esc(r.text)}</div></div>`;
     }).join('');
   });
 }
@@ -1037,7 +1037,7 @@ window.submitReply = async function(confId){
   if(siteLocked&&!isAdmin){showToast('site is locked');return;}
   if(!currentUser){showAuthScreen();return;}
   if(!isAdmin&&bannedNames.some(b=>(b.name||b)===(currentUser.username||'').toLowerCase())){showToast('you are banned');return;}
-  const nick=anonMode?'anon':filterText(currentUser.username);
+  const nick=anonMode?'anonymous':filterText(currentUser.username);
   const input=document.getElementById(`reply-input-${confId}`);
   const rawText=input.value.trim(); if(!rawText) return;
   const text=filterText(rawText);
@@ -1147,7 +1147,7 @@ async function renderAdminList(elId,list){
   el.innerHTML=withReplies.map(conf=>`
     <div class="admin-card${(conf.reports||0)>0?' has-reports':''}${conf.pending?' pending-admin':''}" id="admin-card-${conf.id}">
       <div class="admin-card-meta">
-        <span class="admin-card-nick">~${esc(conf.nickname||'anon')}${conf.nickname==='anon'&&conf.realUsername?`<span style="font-size:10px;color:var(--text-muted);margin-left:6px;">(${esc(conf.realUsername)})</span>`:''}</span>
+        <span class="admin-card-nick">~${esc(conf.nickname||'anonymous')}${conf.nickname==='anonymous'&&conf.realUsername?`<span style="font-size:10px;color:var(--text-muted);margin-left:6px;">(${esc(conf.realUsername)})</span>`:''}</span>
         <div class="admin-card-info">
           <span class="admin-card-time">${timeAgo(conf.createdAt)}</span>
           ${(conf.reports||0)>0?`<span class="report-count">${conf.reports} reports</span>`:''}
@@ -1159,13 +1159,13 @@ async function renderAdminList(elId,list){
         ${conf.pending?`<button class="admin-btn admin-btn-approve" onclick="approveConfession('${conf.id}')">Approve</button>`:''}
         <button class="admin-btn admin-btn-delete" onclick="deleteConfession('${conf.id}')">Delete</button>
         <button class="admin-btn admin-btn-pin" onclick="togglePin('${conf.id}',${!!conf.pinned})">${conf.pinned?'Unpin':'Pin'}</button>
-        <button class="admin-btn" style="background:var(--red-dim);border:1px solid rgba(255,80,80,0.3);color:var(--red);" onclick="openBanModal('${esc(conf.nickname||'anon')}')">Ban user</button>
+        <button class="admin-btn" style="background:var(--red-dim);border:1px solid rgba(255,80,80,0.3);color:var(--red);" onclick="openBanModal('${esc(conf.nickname||'anonymous')}')">Ban user</button>
         ${(conf.reports||0)>0?`<button class="admin-btn admin-btn-clear" onclick="clearReports('${conf.id}')">Clear reports</button>`:''}
       </div>
       ${conf.replies&&conf.replies.length?`<div class="admin-replies">
         <div style="font-size:10px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase">Replies (${conf.replies.length})</div>
         ${conf.replies.map(r=>`<div class="admin-reply-item" id="admin-reply-${r.id}">
-          <div><div class="admin-reply-nick">~${esc(r.nickname||'anon')}${r.nickname==='anon'&&r.realUsername?` <span style="font-size:10px;color:var(--text-muted);">(${esc(r.realUsername)})</span>`:''}</div><div class="admin-reply-text">${esc(r.text)}</div></div>
+          <div><div class="admin-reply-nick">~${esc(r.nickname||'anonymous')}${r.nickname==='anonymous'&&r.realUsername?` <span style="font-size:10px;color:var(--text-muted);">(${esc(r.realUsername)})</span>`:''}</div><div class="admin-reply-text">${esc(r.text)}</div></div>
           <button class="admin-btn-delete-reply" onclick="deleteReply('${conf.id}','${r.id}')">Delete</button>
         </div>`).join('')}
       </div>`:''}
