@@ -559,8 +559,9 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore,collection,addDoc,getDocs,updateDoc,deleteDoc,doc,setDoc,onSnapshot,query,orderBy,where,serverTimestamp,increment,Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore,collection,addDoc,getDocs,updateDoc,deleteDoc,doc,setDoc,onSnapshot,query,orderBy,where,serverTimestamp,increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+// ── CONFIG ────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey:"AIzaSyDRVZQ7EESlC60lBKzHwR0G_ZZZi-kw6Ms",
   authDomain:"say-it-anonymously.firebaseapp.com",
@@ -569,13 +570,25 @@ const firebaseConfig = {
   messagingSenderId:"423965767473",
   appId:"1:423965767473:web:b78b98c13b68fbc4222210"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const ADMIN_PASSWORD = "Oranges";
+
+// ── STATE ─────────────────────────────────────────────────────
 let isAdmin = sessionStorage.getItem('isAdmin')==='true';
+let currentUser = JSON.parse(sessionStorage.getItem('currentUser')||'null');
+let anonMode = false;
 let allConfessions = [];
 let currentSort = 'new';
+let lastPostTime = 0;
+let accountsUnsubscribe = null;
+let banTarget = null;
+
+// Global settings (from Firebase)
+let siteLocked = false, lockReason = 'This site is currently locked.';
+let approvalMode = false, filterEnabled = false;
+let customWords = [], bannedNames = [], dailyTopic = '';
+let autoDeleteDays = 0, slowmodeDelay = 30;
 
 // localStorage state
 const liked = JSON.parse(localStorage.getItem('liked')||'{}');
@@ -585,26 +598,47 @@ const myTokens = JSON.parse(localStorage.getItem('myTokens')||'{}');
 let activityLog = JSON.parse(localStorage.getItem('activityLog')||'[]');
 let notifications = JSON.parse(localStorage.getItem('notifications')||'[]');
 let seenReplyCounts = JSON.parse(localStorage.getItem('seenReplyCounts')||'{}');
-
-// Persistent browser ID
 let browserId = localStorage.getItem('browserId');
-if(!browserId){ browserId = Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem('browserId', browserId); }
+if(!browserId){ browserId=Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem('browserId',browserId); }
 
-// ── AUTH SYSTEM ──────────────────────────────────────────────
-let currentUser = JSON.parse(sessionStorage.getItem('currentUser')||'null');
-let anonMode = false;
+// ── HELPERS ───────────────────────────────────────────────────
+function esc(t){ return(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function timeAgo(ts){
+  if(!ts) return '';
+  const s = Math.floor((Date.now()-ts.toMillis())/1000);
+  if(s<5) return 'just now';
+  if(s<60) return s+'s ago';
+  if(s<3600) return Math.floor(s/60)+'m ago';
+  if(s<86400) return Math.floor(s/3600)+'h ago';
+  return Math.floor(s/86400)+'d ago';
+}
 
 function hashPassword(p){
-  // simple djb2 hash — not cryptographic but avoids plain text
   let h=5381; for(let i=0;i<p.length;i++) h=((h<<5)+h)+p.charCodeAt(i); return(h>>>0).toString(36);
 }
 
-function showAuthScreen(){
-  document.getElementById('authScreen').classList.add('active');
+const DEFAULT_BAD_WORDS=['fuck','shit','ass','bitch','bastard','dick','pussy','cunt','cock','nigger','nigga','faggot','fag','whore','slut','retard','kys'];
+function filterText(t){
+  if(!filterEnabled) return t;
+  let o=t;
+  [...DEFAULT_BAD_WORDS,...customWords].forEach(w=>{
+    if(!w.trim()) return;
+    const re=new RegExp(`\\b${w.trim()}\\b`,'gi');
+    o=o.replace(re,m=>'*'.repeat(m.length));
+  });
+  return o;
 }
-function hideAuthScreen(){
-  document.getElementById('authScreen').classList.remove('active');
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
 }
+
+// ── AUTH ──────────────────────────────────────────────────────
+function showAuthScreen(){ document.getElementById('authScreen').classList.add('active'); }
+function hideAuthScreen(){ document.getElementById('authScreen').classList.remove('active'); }
 
 window.switchAuthTab = function(tab){
   document.getElementById('loginTab').classList.toggle('active',tab==='login');
@@ -620,15 +654,17 @@ window.doLogin = async function(){
   const password=document.getElementById('loginPassword').value;
   const err=document.getElementById('loginError');
   if(!username||!password){err.textContent='fill in both fields';return;}
-  const snap=await getDocs(query(collection(db,'users'),where('username','==',username)));
-  if(snap.empty){err.textContent='username not found';return;}
-  const userData=snap.docs[0].data();
-  if(userData.password!==hashPassword(password)){err.textContent='incorrect password';return;}
-  currentUser={username:userData.username,uid:snap.docs[0].id};
-  sessionStorage.setItem('currentUser',JSON.stringify(currentUser));
-  localStorage.setItem('myNick',currentUser.username);
-  hideAuthScreen();
-  applyUserUI();
+  try{
+    const snap=await getDocs(query(collection(db,'users'),where('username','==',username)));
+    if(snap.empty){err.textContent='username not found';return;}
+    const userData=snap.docs[0].data();
+    if(userData.password!==hashPassword(password)){err.textContent='incorrect password';return;}
+    currentUser={username:userData.username,uid:snap.docs[0].id};
+    sessionStorage.setItem('currentUser',JSON.stringify(currentUser));
+    localStorage.setItem('myNick',currentUser.username);
+    hideAuthScreen();
+    applyUserUI();
+  }catch(e){err.textContent='error: '+e.message;}
 };
 
 window.doSignup = async function(){
@@ -641,174 +677,213 @@ window.doSignup = async function(){
   if(!/^[a-z0-9_]+$/.test(username)){err.textContent='letters, numbers and _ only';return;}
   if(password.length<6){err.textContent='password must be 6+ characters';return;}
   if(password!==password2){err.textContent='passwords do not match';return;}
-  const existing=await getDocs(query(collection(db,'users'),where('username','==',username)));
-  if(!existing.empty){err.textContent='username already taken';return;}
-  const ref=await addDoc(collection(db,'users'),{username,password:hashPassword(password),createdAt:serverTimestamp()});
-  currentUser={username,uid:ref.id};
-  sessionStorage.setItem('currentUser',JSON.stringify(currentUser));
-  localStorage.setItem('myNick',username);
-  hideAuthScreen();
-  applyUserUI();
+  try{
+    const existing=await getDocs(query(collection(db,'users'),where('username','==',username)));
+    if(!existing.empty){err.textContent='username already taken';return;}
+    const ref=await addDoc(collection(db,'users'),{username,password:hashPassword(password),createdAt:serverTimestamp()});
+    currentUser={username,uid:ref.id};
+    sessionStorage.setItem('currentUser',JSON.stringify(currentUser));
+    localStorage.setItem('myNick',username);
+    hideAuthScreen();
+    applyUserUI();
+  }catch(e){err.textContent='error: '+e.message;}
 };
 
 window.logoutUser = function(){
-  currentUser=null;
+  currentUser=null; anonMode=false;
   sessionStorage.removeItem('currentUser');
   sessionStorage.removeItem('isAdmin');
   isAdmin=false;
-  anonMode=false;
   closeUserMenu();
-  applyUserUI();
   showAuthScreen();
 };
 
-window.toggleUserMenu = function(){
-  document.getElementById('userMenu').classList.toggle('open');
-};
-window.closeUserMenu = function(){
-  document.getElementById('userMenu').classList.remove('open');
-};
+window.toggleUserMenu = function(){ document.getElementById('userMenu').classList.toggle('open'); };
+window.closeUserMenu = function(){ document.getElementById('userMenu').classList.remove('open'); };
 
 window.toggleAnonMode = function(){
   anonMode=!anonMode;
   document.getElementById('anonBox').classList.toggle('on',anonMode);
   document.getElementById('anonLabel').innerHTML=anonMode
-    ? 'Posting as <strong style="color:var(--text-muted)">anonymous</strong>'
-    : 'Post as <strong style="color:var(--text)">' + esc(currentUser?.username||'') + '</strong>';
+    ?'Posting as <strong style="color:var(--text-muted)">anonymous</strong>'
+    :'Post as <strong style="color:var(--text)">'+esc(currentUser?.username||'')+'</strong>';
 };
 
 function applyUserUI(){
-  if(currentUser){
-    const initial=(currentUser.username[0]||'?').toUpperCase();
-    document.getElementById('userAvatar').textContent=initial;
-    document.getElementById('userNameDisplay').textContent=currentUser.username;
-    document.getElementById('menuUsername').textContent='@'+currentUser.username;
-    document.getElementById('anonBox').classList.remove('on');
-    document.getElementById('anonLabel').innerHTML='Post as <strong style="color:var(--text)">' + esc(currentUser.username) + '</strong>';
-    anonMode=false;
-  }
+  if(!currentUser) return;
+  document.getElementById('userAvatar').textContent=(currentUser.username[0]||'?').toUpperCase();
+  document.getElementById('userNameDisplay').textContent=currentUser.username;
+  document.getElementById('menuUsername').textContent='@'+currentUser.username;
+  document.getElementById('anonBox').classList.remove('on');
+  document.getElementById('anonLabel').innerHTML='Post as <strong style="color:var(--text)">'+esc(currentUser.username)+'</strong>';
+  anonMode=false;
 }
 
-document.addEventListener('click',e=>{
-  const wrap=document.querySelector('.user-wrap');
-  if(wrap&&!wrap.contains(e.target)) closeUserMenu();
-});
-
-// Notifications
+// ── NOTIFICATIONS ─────────────────────────────────────────────
 function updateNotifBadge(){
-  const unread = notifications.filter(n=>!n.read).length;
-  const badge = document.getElementById('notifBadge');
-  badge.textContent = unread > 9 ? '9+' : unread;
-  badge.classList.toggle('visible', unread > 0);
+  const unread=notifications.filter(n=>!n.read).length;
+  const badge=document.getElementById('notifBadge');
+  if(!badge) return;
+  badge.textContent=unread>9?'9+':unread;
+  badge.classList.toggle('visible',unread>0);
 }
 
-function addNotification(confId, confText, replyText, replyNick){
-  notifications.unshift({id:Date.now(), confId, confText:confText.slice(0,60), replyText:replyText.slice(0,80), replyNick, time:Date.now(), read:false});
-  if(notifications.length > 50) notifications = notifications.slice(0,50);
-  localStorage.setItem('notifications', JSON.stringify(notifications));
+function addNotification(confId,confText,replyText,replyNick){
+  notifications.unshift({id:Date.now(),confId,confText:confText.slice(0,60),replyText:replyText.slice(0,80),replyNick,time:Date.now(),read:false});
+  if(notifications.length>50) notifications=notifications.slice(0,50);
+  localStorage.setItem('notifications',JSON.stringify(notifications));
   updateNotifBadge();
 }
 
+function renderNotifList(){
+  const el=document.getElementById('notifList');
+  if(!el) return;
+  if(!notifications.length){el.innerHTML='<div class="notif-empty">no notifications yet</div>';return;}
+  el.innerHTML=notifications.map(n=>`
+    <div class="notif-item${n.read?'':' unread'}" onclick="goToNotif('${n.confId}','${n.id}')">
+      <div class="notif-item-top">
+        <span class="notif-item-label">~${esc(n.replyNick)} replied</span>
+        <span class="notif-item-time">${timeAgo({toMillis:()=>n.time})}</span>
+      </div>
+      <div class="notif-item-preview">${esc(n.replyText)}</div>
+    </div>`).join('');
+}
+
 window.toggleNotifPanel = function(){
-  const panel = document.getElementById('notifPanel');
+  const panel=document.getElementById('notifPanel');
   panel.classList.toggle('open');
   if(panel.classList.contains('open')) renderNotifList();
 };
 
-window.goToNotif = function(confId, notifId){
-  notifications = notifications.map(n=>n.id==notifId?{...n,read:true}:n);
-  localStorage.setItem('notifications', JSON.stringify(notifications));
-  updateNotifBadge();
-  renderNotifList();
+window.goToNotif = function(confId,notifId){
+  notifications=notifications.map(n=>n.id==notifId?{...n,read:true}:n);
+  localStorage.setItem('notifications',JSON.stringify(notifications));
+  updateNotifBadge(); renderNotifList();
   document.getElementById('notifPanel').classList.remove('open');
-  const card = document.getElementById(`card-${confId}`);
+  const card=document.getElementById(`card-${confId}`);
   if(card){
-    card.scrollIntoView({behavior:'smooth', block:'center'});
-    const replies = document.getElementById(`replies-${confId}`);
-    if(replies && replies.classList.contains('hidden')){
-      replies.classList.remove('hidden');
-      loadReplies(confId);
-    }
+    card.scrollIntoView({behavior:'smooth',block:'center'});
+    const replies=document.getElementById(`replies-${confId}`);
+    if(replies&&replies.classList.contains('hidden')){ replies.classList.remove('hidden'); loadReplies(confId); }
   }
 };
 
 window.clearNotifications = function(){
-  notifications = notifications.map(n=>({...n,read:true}));
-  localStorage.setItem('notifications', JSON.stringify(notifications));
-  updateNotifBadge();
-  renderNotifList();
+  notifications=notifications.map(n=>({...n,read:true}));
+  localStorage.setItem('notifications',JSON.stringify(notifications));
+  updateNotifBadge(); renderNotifList();
 };
 
-// Watch replies on owned posts for new notifications
 function watchOwnedReplies(){
   Object.keys(myTokens).forEach(confId=>{
     onSnapshot(query(collection(db,'confessions',confId,'replies'),orderBy('createdAt','asc')),snap=>{
-      const count = snap.size;
-      const prev = seenReplyCounts[confId] ?? null;
-      if(prev !== null && count > prev){
-        const newReplies = snap.docs.slice(prev);
-        newReplies.forEach(d=>{
-          const r = d.data();
-          if(!currentUser || r.nickname !== currentUser.username || anonMode){
-            const conf = allConfessions.find(c=>c.id===confId);
-            addNotification(confId, conf?.text||'', r.text||'', r.nickname||'anon');
+      const count=snap.size;
+      const prev=seenReplyCounts[confId]??null;
+      if(prev!==null&&count>prev){
+        snap.docs.slice(prev).forEach(d=>{
+          const r=d.data();
+          if(!currentUser||r.nickname!==currentUser.username||anonMode){
+            const conf=allConfessions.find(c=>c.id===confId);
+            addNotification(confId,conf?.text||'',r.text||'',r.nickname||'anon');
           }
         });
       }
-      if(prev === null || count !== prev){
-        seenReplyCounts[confId] = count;
-        localStorage.setItem('seenReplyCounts', JSON.stringify(seenReplyCounts));
+      if(prev===null||count!==prev){
+        seenReplyCounts[confId]=count;
+        localStorage.setItem('seenReplyCounts',JSON.stringify(seenReplyCounts));
       }
     });
   });
 }
 
-document.addEventListener('click', e=>{
-  const wrap = document.querySelector('.notif-wrap');
-  if(wrap && !wrap.contains(e.target)) document.getElementById('notifPanel').classList.remove('open');
-});
-
-updateNotifBadge();
-
-let filterEnabled = false;
-let customWords = [];
-let siteLocked = false;
-let lockReason = 'This site is currently locked.';
-let approvalMode = false;
-let autoDeleteDays = 0;
-let bannedNames = [];
-let dailyTopic = '';
-let slowmodeDelay = 30;
-let lastPostTime = 0;
-
-// Listen to ALL global site settings from Firebase
-onSnapshot(doc(db,'siteSettings','config'), snap => {
-  const d = snap.data() || {};
-  siteLocked = d.siteLocked || false;
-  lockReason = d.lockReason || 'This site is currently locked.';
-  approvalMode = d.approvalMode || false;
-  filterEnabled = d.filterEnabled || false;
-  customWords = d.customWords || [];
-  dailyTopic = d.dailyTopic || '';
-  autoDeleteDays = d.autoDeleteDays || 0;
-  bannedNames = d.bannedNames || [];
-  slowmodeDelay = d.slowmodeDelay ?? 30;
-  applyLockdown();
-  applyDailyTopic();
-  checkIfBanned();
-  renderBansTab();
-});
-
-// Daily topic
+// ── SETTINGS APPLIED ─────────────────────────────────────────
 function applyDailyTopic(){
   const banner=document.getElementById('topicBanner');
   const text=document.getElementById('topicText');
+  if(!banner) return;
   if(dailyTopic){banner.classList.add('active');text.textContent=dailyTopic;}
   else{banner.classList.remove('active');}
 }
-applyDailyTopic();
 
-// Sort
+function applyLockdown(){
+  const form=document.getElementById('postForm');
+  const banner=document.getElementById('lockedBanner');
+  const bannerText=document.getElementById('lockedBannerText');
+  const approvalBanner=document.getElementById('approvalBanner');
+  if(!form) return;
+  bannerText.textContent=lockReason;
+  if(siteLocked&&!isAdmin){form.style.display='none';banner.classList.add('active');}
+  else{form.style.display='';banner.classList.remove('active');}
+  approvalBanner.classList.toggle('active',approvalMode&&!isAdmin);
+}
+
+function checkIfBanned(){
+  if(isAdmin||!currentUser) return;
+  const overlay=document.getElementById('bannedOverlay');
+  if(!overlay) return;
+  const username=(currentUser?.username||'').toLowerCase();
+  const entry=bannedNames.find(b=>(b.name||b)===username);
+  if(entry){
+    overlay.style.display='flex'; overlay.style.pointerEvents='all';
+    const reasonEl=document.getElementById('banReasonDisplay');
+    const reasonText=document.getElementById('banReasonText');
+    if(entry.reason){reasonEl.style.display='block';reasonText.textContent=entry.reason;}
+    else{reasonEl.style.display='none';}
+  } else {
+    overlay.style.display='none'; overlay.style.pointerEvents='none';
+  }
+}
+
+window.adminUnbanSelf = async function(){
+  const val=document.getElementById('banEscapeInput').value;
+  if(val!==ADMIN_PASSWORD){
+    document.getElementById('banEscapeInput').value='';
+    document.getElementById('banEscapeInput').placeholder='Wrong password — try again';
+    return;
+  }
+  bannedNames=[];
+  await setDoc(doc(db,'siteSettings','config'),{bannedNames:[]},{merge:true});
+  isAdmin=true; sessionStorage.setItem('isAdmin','true');
+  const overlay=document.getElementById('bannedOverlay');
+  overlay.style.display='none'; overlay.style.pointerEvents='none';
+  showToast('unbanned — you are now in admin mode');
+};
+
+// ── FIREBASE SETTINGS LISTENER ────────────────────────────────
+onSnapshot(doc(db,'siteSettings','config'),snap=>{
+  const d=snap.data()||{};
+  siteLocked=d.siteLocked||false;
+  lockReason=d.lockReason||'This site is currently locked.';
+  approvalMode=d.approvalMode||false;
+  filterEnabled=d.filterEnabled||false;
+  customWords=d.customWords||[];
+  dailyTopic=d.dailyTopic||'';
+  autoDeleteDays=d.autoDeleteDays||0;
+  bannedNames=d.bannedNames||[];
+  slowmodeDelay=d.slowmodeDelay??30;
+  applyLockdown();
+  applyDailyTopic();
+  checkIfBanned();
+  if(document.getElementById('bans-list')&&document.getElementById('tab-bans').classList.contains('active')) renderBansTab();
+  if(document.getElementById('accounts-list')&&document.getElementById('tab-accounts').classList.contains('active')) renderBannedList();
+});
+
+// ── SLOWMODE ──────────────────────────────────────────────────
+function startSlowmode(){
+  if(isAdmin||slowmodeDelay<=0) return;
+  lastPostTime=Date.now();
+  const bar=document.getElementById('slowmodeBar'),prog=document.getElementById('slowmodeProgress'),msg=document.getElementById('slowmodeMsg'),btn=document.getElementById('submitBtn');
+  bar.classList.add('active'); msg.classList.add('active'); btn.disabled=true;
+  const end=lastPostTime+slowmodeDelay*1000;
+  const iv=setInterval(()=>{
+    const rem=Math.ceil((end-Date.now())/1000);
+    prog.style.width=Math.max(0,((end-Date.now())/(slowmodeDelay*1000))*100)+'%';
+    msg.textContent=`slowmode — wait ${rem}s`;
+    if(Date.now()>=end){clearInterval(iv);bar.classList.remove('active');msg.classList.remove('active');btn.disabled=false;btn.textContent='Post it';}
+  },100);
+}
+
+// ── FEED ──────────────────────────────────────────────────────
 window.setSort = function(s){
   currentSort=s;
   document.querySelectorAll('.sort-tab').forEach(t=>t.classList.remove('active'));
@@ -823,211 +898,97 @@ function renderSorted(){
   renderFeed(list);
 }
 
-// Bad word filter
-const DEFAULT_BAD_WORDS=['fuck','shit','ass','bitch','bastard','dick','pussy','cunt','cock','nigger','nigga','faggot','fag','whore','slut','retard','kys'];
-function filterText(t){
-  if(!filterEnabled)return t;
-  let o=t;
-  [...DEFAULT_BAD_WORDS,...customWords].forEach(w=>{
-    if(!w.trim())return;
-    const re=new RegExp(`\\b${w.trim()}\\b`,'gi');
-    o=o.replace(re,m=>'*'.repeat(m.length));
-  });
-  return o;
+function renderFeed(list){
+  const feed=document.getElementById('feed');
+  const pinned=list.filter(c=>c.pinned);
+  const rest=list.filter(c=>!c.pinned);
+  const ordered=[...pinned,...rest];
+  const visible=ordered.filter(c=>isAdmin||!c.pending);
+  if(!visible.length){feed.innerHTML='<div class="empty">nothing here yet</div>';return;}
+  feed.innerHTML=visible.map(conf=>confessionCard(conf)).join('');
 }
 
-// Slowmode
-function startSlowmode(){
-  if(isAdmin||slowmodeDelay<=0)return;
-  lastPostTime=Date.now();
-  const bar=document.getElementById('slowmodeBar'),prog=document.getElementById('slowmodeProgress'),msg=document.getElementById('slowmodeMsg'),btn=document.getElementById('submitBtn');
-  bar.classList.add('active');msg.classList.add('active');btn.disabled=true;
-  const end=lastPostTime+slowmodeDelay*1000;
-  const iv=setInterval(()=>{
-    const rem=Math.ceil((end-Date.now())/1000);
-    const pct=((end-Date.now())/(slowmodeDelay*1000))*100;
-    prog.style.width=Math.max(0,pct)+'%';
-    msg.textContent=`slowmode — wait ${rem}s`;
-    if(Date.now()>=end){clearInterval(iv);bar.classList.remove('active');msg.classList.remove('active');btn.disabled=false;}
-  },100);
+function confessionCard(conf){
+  const isOwner=!!myTokens[conf.id];
+  const isLiked=!!liked[conf.id];
+  const isBookmarked=!!bookmarks[conf.id];
+  const hasReports=(conf.reports||0)>0;
+  const cls=`confession-card${conf.pinned?' pinned-card':''}${hasReports&&isAdmin?' reported-card':''}${conf.pending?' pending-card':''}`;
+  return`<div class="${cls}" id="card-${conf.id}">
+    ${conf.pinned?'<div class="pin-banner">📌 Pinned</div>':''}
+    ${conf.pending?'<div class="pending-banner">⏳ Awaiting approval</div>':''}
+    <div class="card-body">
+      <div class="card-meta">
+        <span class="card-nick">~${esc(conf.nickname||'anon')}${conf.isAdmin?'<span class="admin-badge">A</span>':''}</span>
+        <span class="card-time">${timeAgo(conf.createdAt)}</span>
+      </div>
+      <div class="card-text">${esc(conf.text)}${conf.edited?'<span class="edited-tag">(edited)</span>':''}</div>
+      <div class="card-actions">
+        <button class="action-btn${isLiked?' liked':''}" id="like-${conf.id}" onclick="toggleLike('${conf.id}',${conf.likes||0})">
+          <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="${isLiked?'currentColor':'none'}"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          <span id="likes-${conf.id}">${conf.likes||0}</span>
+        </button>
+        <button class="action-btn reply-btn" onclick="toggleReplies('${conf.id}','${esc(conf.nickname||'anon')}')">
+          <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span id="reply-count-${conf.id}">${conf.replyCount||0}</span>
+        </button>
+        <button class="action-btn${isBookmarked?' bookmarked':''}" onclick="toggleBookmark('${conf.id}')">
+          <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="${isBookmarked?'currentColor':'none'}"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        ${!reported[conf.id]?`<button class="action-btn report-btn" onclick="openReport('${conf.id}')">report</button>`:'<span style="color:var(--text-dim);font-size:11px;">reported</span>'}
+        ${isOwner?`<button class="action-btn op-edit" onclick="openEditForm('${conf.id}')">edit</button><button class="action-btn op-delete" onclick="deleteOwnPost('${conf.id}')">delete</button>`:''}
+        ${hasReports&&isAdmin?`<span class="report-badge">${conf.reports} report${conf.reports>1?'s':''}</span>`:''}
+      </div>
+    </div>
+    <div class="edit-form" id="edit-form-${conf.id}">
+      <textarea class="edit-textarea" id="edit-text-${conf.id}" rows="3">${esc(conf.text)}</textarea>
+      <div class="edit-actions">
+        <button class="edit-cancel" onclick="closeEditForm('${conf.id}')">Cancel</button>
+        <button class="edit-save" onclick="saveEdit('${conf.id}')">Save</button>
+      </div>
+    </div>
+    <div class="replies-section hidden" id="replies-${conf.id}">
+      <div id="replies-list-${conf.id}"></div>
+      <div class="reply-form">
+        <input type="text" class="reply-input" id="reply-input-${conf.id}" placeholder="Write a reply..." maxlength="300">
+        <button class="reply-submit" onclick="submitReply('${conf.id}')">reply</button>
+      </div>
+    </div>
+  </div>`;
 }
 
-// Lockdown
-function applyLockdown(){
-  const form=document.getElementById('postForm'),banner=document.getElementById('lockedBanner'),bannerText=document.getElementById('lockedBannerText'),approvalBanner=document.getElementById('approvalBanner');
-  bannerText.textContent=lockReason;
-  if(siteLocked&&!isAdmin){form.style.display='none';banner.classList.add('active');}
-  else{form.style.display='';banner.classList.remove('active');}
-  approvalBanner.classList.toggle('active',approvalMode&&!isAdmin);
-}
-applyLockdown();
-
-// Check if current user is banned and show overlay
-function checkIfBanned(){
-  if(isAdmin||!currentUser)return;
-  const myNick=(localStorage.getItem('myNick')||'').toLowerCase();
-  const overlay=document.getElementById('bannedOverlay');
-  const username=(currentUser?.username||'').toLowerCase();
-  if(!username)return;
-  const entry=bannedNames.find(b=>(b.name||b)===username);
-  if(entry){
-    overlay.style.display='flex';
-    overlay.style.pointerEvents='all';
-    const reasonEl=document.getElementById('banReasonDisplay');
-    const reasonText=document.getElementById('banReasonText');
-    if(entry.reason){reasonEl.style.display='block';reasonText.textContent=entry.reason;}
-    else{reasonEl.style.display='none';}
-  } else {
-    overlay.style.display='none';
-    overlay.style.pointerEvents='none';
-  }
-}
-
-window.adminUnbanSelf = async function(){
-  const val = document.getElementById('banEscapeInput').value;
-  if(val !== ADMIN_PASSWORD){
-    document.getElementById('banEscapeInput').value='';
-    document.getElementById('banEscapeInput').placeholder='Wrong password — try again';
-    return;
-  }
-  // Clear all bans entirely
-  bannedNames = [];
-  await setDoc(doc(db,'siteSettings','config'),{bannedNames:[]},{merge:true});
-  isAdmin = true;
-  sessionStorage.setItem('isAdmin','true');
-  const overlay = document.getElementById('bannedOverlay');
-  overlay.style.display='none';
-  overlay.style.pointerEvents='none';
-  showToast('unbanned — you are now in admin mode');
-};
-
-// Auto-delete
-function autoDeleteOld(confessions){
-  if(!autoDeleteDays||!isAdmin)return;
+function autoDeleteOld(list){
+  if(!autoDeleteDays||!isAdmin) return;
   const cutoff=Date.now()-autoDeleteDays*86400000;
-  confessions.forEach(async c=>{
+  list.forEach(async c=>{
     if(c.createdAt&&c.createdAt.toMillis()<cutoff){
       const rs=await getDocs(collection(db,'confessions',c.id,'replies'));
-      for(const r of rs.docs)await deleteDoc(r.ref);
+      for(const r of rs.docs) await deleteDoc(r.ref);
       await deleteDoc(doc(db,'confessions',c.id));
     }
   });
 }
 
-// timeAgo
-// Init auth UI after all functions defined
-function initAuth(){ if(currentUser){ applyUserUI(); } else { showAuthScreen(); } }
-
-function timeAgo(ts){
-  if(!ts)return'just now';
-  const s=Math.floor((Date.now()-ts.toMillis())/1000);
-  if(s<60)return'just now';if(s<3600)return`${Math.floor(s/60)}m ago`;
-  if(s<86400)return`${Math.floor(s/3600)}h ago`;return`${Math.floor(s/86400)}d ago`;
-}
-function esc(t){return(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-
-function renderNotifList(){
-  const el = document.getElementById('notifList');
-  if(!notifications.length){el.innerHTML='<div class="notif-empty">no notifications yet</div>';return;}
-  el.innerHTML = notifications.map(n=>`
-    <div class="notif-item${n.read?'':' unread'}" onclick="goToNotif('${n.confId}','${n.id}')">
-      <div class="notif-item-top">
-        <span class="notif-item-label">~${esc(n.replyNick)} replied to your post</span>
-        <span class="notif-item-time">${timeAgo({toMillis:()=>n.time})}</span>
-      </div>
-      <div class="notif-item-preview">${esc(n.replyText)}</div>
-    </div>`).join('');
-}
-
-// Render feed
-function renderFeed(confessions){
-  const feed=document.getElementById('feed');
-  const visible=confessions.filter(c=>isAdmin||!c.pending);
-  if(!visible.length){
-    feed.innerHTML=currentSort==='bookmarks'?'<div class="empty">No saved confessions yet.</div>':'<div class="empty">No confessions yet. Be the first.</div>';
-    return;
-  }
-  const pinned=visible.filter(c=>c.pinned);
-  const rest=visible.filter(c=>!c.pinned);
-  feed.innerHTML='';
-  [...pinned,...rest].forEach(conf=>{
-    const isLiked=liked[conf.id],isReported=reported[conf.id],hasReports=(conf.reports||0)>0,isBookmarked=bookmarks[conf.id];
-    const isOwner=!!myTokens[conf.id];
-    const card=document.createElement('div');
-    card.className=`confession-card${hasReports?' reported-card':''}${conf.pinned?' pinned-card':''}${conf.pending?' pending-card':''}`;
-    card.id=`card-${conf.id}`;
-    card.innerHTML=`
-      ${conf.pinned?'<div class="pin-banner">Pinned</div>':''}
-      ${conf.pending?'<div class="pending-banner">Awaiting approval</div>':''}
-      <div class="card-body">
-        <div class="card-meta">
-          <span class="card-nick">~${esc(conf.nickname||'anon')}</span>
-          <span class="card-time">${timeAgo(conf.createdAt)}${conf.edited?'<span class="edited-tag">(edited)</span>':''}</span>
-        </div>
-        <div class="card-text" id="text-${conf.id}">${esc(conf.text)}</div>
-        <div class="card-actions">
-          <button class="action-btn${isLiked?' liked':''}" id="like-${conf.id}" onclick="toggleLike('${conf.id}',${conf.likes||0})">
-            <svg viewBox="0 0 24 24" fill="${isLiked?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-            <span id="likes-${conf.id}">${conf.likes||0}</span>
-          </button>
-          <button class="action-btn reply-btn" onclick="toggleReplies('${conf.id}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <span id="replycount-${conf.id}">${conf.replyCount||0}</span>
-          </button>
-          <button class="action-btn${isBookmarked?' bookmarked':''}" id="bookmark-${conf.id}" onclick="toggleBookmark('${conf.id}')">
-            <svg viewBox="0 0 24 24" fill="${isBookmarked?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-          </button>
-          <button class="action-btn report-btn" onclick="openReport('${conf.id}')" ${isReported?'disabled style="opacity:0.3"':''}>
-            ${isReported?'reported':'report'}
-          </button>
-          ${isOwner?`
-          <button class="action-btn op-edit" onclick="openEditForm('${conf.id}')">edit</button>
-          <button class="action-btn op-delete" onclick="opDeleteConfession('${conf.id}')">delete</button>
-          `:''}
-          ${hasReports?`<span class="report-badge">${conf.reports} report${conf.reports>1?'s':''}</span>`:''}
-        </div>
-      </div>
-      ${isOwner?`
-      <div class="edit-form" id="edit-form-${conf.id}">
-        <textarea class="edit-textarea" id="edit-text-${conf.id}" rows="3" maxlength="600">${esc(conf.text)}</textarea>
-        <div class="edit-actions">
-          <button class="edit-cancel" onclick="closeEditForm('${conf.id}')">Cancel</button>
-          <button class="edit-save" onclick="saveEdit('${conf.id}')">Save</button>
-        </div>
-      </div>`:''}
-      <div class="replies-section hidden" id="replies-${conf.id}">
-        <div id="replies-list-${conf.id}"></div>
-        <div class="reply-form">
-          <input class="reply-input" id="reply-input-${conf.id}" placeholder="Write a reply..." maxlength="300">
-          <button class="reply-submit" onclick="submitReply('${conf.id}')">reply</button>
-        </div>
-      </div>`;
-    feed.appendChild(card);
-  });
-}
-
-// Live feed
+// ── CONFESSIONS LISTENER ──────────────────────────────────────
 onSnapshot(query(collection(db,'confessions'),orderBy('createdAt','desc')),snap=>{
   allConfessions=snap.docs.map(d=>({id:d.id,...d.data()}));
   autoDeleteOld(allConfessions);
   renderSorted();
 });
-watchOwnedReplies();
-initAuth();
 
-// Submit
+// ── ACTIONS ───────────────────────────────────────────────────
 window.submitConfession = async function(){
   if(siteLocked&&!isAdmin){showToast('site is locked');return;}
-  if(!isAdmin&&slowmodeDelay>0&&Date.now()-lastPostTime<slowmodeDelay*1000)return;
+  if(!isAdmin&&slowmodeDelay>0&&Date.now()-lastPostTime<slowmodeDelay*1000) return;
   if(!currentUser){showAuthScreen();return;}
+  if(!isAdmin&&bannedNames.some(b=>(b.name||b)===(currentUser.username||'').toLowerCase())){showToast('you are banned');return;}
   const nick=anonMode?'anon':filterText(currentUser.username);
-  if(!isAdmin&&bannedNames.some(b=>(b.name||b)===(currentUser?.username||'').toLowerCase())){showToast('you are banned');return;}
   const rawText=document.getElementById('confessionText').value.trim();
-  if(!rawText)return;
+  if(!rawText) return;
   const text=filterText(rawText);
   const token=Math.random().toString(36).slice(2)+Date.now().toString(36);
   const btn=document.getElementById('submitBtn');
-  btn.disabled=true;btn.textContent='posting...';
+  btn.disabled=true; btn.textContent='posting...';
   try{
     const ref=await addDoc(collection(db,'confessions'),{nickname:nick,text,likes:0,replyCount:0,reports:0,isAdmin,pending:approvalMode&&!isAdmin,browserId,createdAt:serverTimestamp()});
     myTokens[ref.id]=token;
@@ -1037,86 +998,37 @@ window.submitConfession = async function(){
     document.getElementById('charCount').textContent='0';
     showToast(approvalMode&&!isAdmin?'submitted — awaiting approval':'confession posted');
     startSlowmode();
-  }catch(e){showToast('error posting');btn.disabled=false;}
-  if(isAdmin||slowmodeDelay<=0){btn.disabled=false;btn.textContent='Post it';}
-  else btn.textContent='Post it';
+  }catch(e){showToast('error posting');}
+  btn.disabled=false; btn.textContent='Post it';
 };
 
-// Like
 window.toggleLike = async function(id,current){
   const btn=document.getElementById(`like-${id}`);
   const countEl=document.getElementById(`likes-${id}`);
-  const isLiked=liked[id];
-  liked[id]=!isLiked;
-  if(!liked[id])delete liked[id];
+  liked[id]=!liked[id]; if(!liked[id]) delete liked[id];
   localStorage.setItem('liked',JSON.stringify(liked));
   const nowLiked=!!liked[id];
   btn.classList.toggle('liked',nowLiked);
   btn.querySelector('svg').setAttribute('fill',nowLiked?'currentColor':'none');
-  const newCount=current+(nowLiked?1:-1);
-  countEl.textContent=Math.max(0,newCount);
+  countEl.textContent=Math.max(0,current+(nowLiked?1:-1));
   await updateDoc(doc(db,'confessions',id),{likes:increment(nowLiked?1:-1)});
 };
 
-// OP edit/delete
-window.openEditForm = function(id){
-  const form=document.getElementById(`edit-form-${id}`);
-  if(form)form.classList.add('open');
-};
-
-window.closeEditForm = function(id){
-  const form=document.getElementById(`edit-form-${id}`);
-  if(form)form.classList.remove('open');
-};
-
-window.saveEdit = async function(id){
-  const ta=document.getElementById(`edit-text-${id}`);
-  const raw=ta?.value.trim();
-  if(!raw)return;
-  const orig=allConfessions.find(c=>c.id===id);
-  const text=filterText(raw);
-  await updateDoc(doc(db,'confessions',id),{text,edited:true});
-  document.getElementById(`text-${id}`).textContent=text;
-  closeEditForm(id);
-  addLogEntry('edit',orig?.nickname||'anon',orig?.text||'',id);
-  showToast('confession updated');
-};
-
-window.opDeleteConfession = async function(id){
-  if(!confirm('Delete your confession?'))return;
-  const orig=allConfessions.find(c=>c.id===id);
-  const rs=await getDocs(collection(db,'confessions',id,'replies'));
-  for(const r of rs.docs)await deleteDoc(r.ref);
-  await deleteDoc(doc(db,'confessions',id));
-  delete myTokens[id];
-  localStorage.setItem('myTokens',JSON.stringify(myTokens));
-  addLogEntry('delete',orig?.nickname||'anon',orig?.text||'',id);
-  showToast('confession deleted');
-};
-
-// Bookmark
 window.toggleBookmark = function(id){
-  bookmarks[id]=!bookmarks[id];
-  if(!bookmarks[id])delete bookmarks[id];
+  bookmarks[id]=!bookmarks[id]; if(!bookmarks[id]) delete bookmarks[id];
   localStorage.setItem('bookmarks',JSON.stringify(bookmarks));
-  const btn=document.getElementById(`bookmark-${id}`);
-  if(btn){
-    btn.classList.toggle('bookmarked',!!bookmarks[id]);
-    btn.querySelector('svg').setAttribute('fill',bookmarks[id]?'currentColor':'none');
-  }
-  if(currentSort==='bookmarks')renderSorted();
-  showToast(bookmarks[id]?'saved':'removed from saved');
+  renderSorted();
 };
 
-// Replies
-window.toggleReplies = function(id){
-  const s=document.getElementById(`replies-${id}`);
-  s.classList.toggle('hidden');
-  if(!s.classList.contains('hidden'))loadReplies(id);
+window.toggleReplies = function(confId,confNick){
+  const section=document.getElementById(`replies-${confId}`);
+  if(section.classList.contains('hidden')){
+    section.classList.remove('hidden');
+    loadReplies(confId,confNick);
+  } else { section.classList.add('hidden'); }
 };
 
-function loadReplies(confId){
-  const confNick=(allConfessions.find(c=>c.id===confId)||{}).nickname||'';
+function loadReplies(confId,confNick){
   const list=document.getElementById(`replies-list-${confId}`);
   list.innerHTML='<div class="loading" style="padding:16px 24px">loading...</div>';
   onSnapshot(query(collection(db,'confessions',confId,'replies'),orderBy('createdAt','asc')),snap=>{
@@ -1132,30 +1044,60 @@ function loadReplies(confId){
 window.submitReply = async function(confId){
   if(siteLocked&&!isAdmin){showToast('site is locked');return;}
   if(!currentUser){showAuthScreen();return;}
+  if(!isAdmin&&bannedNames.some(b=>(b.name||b)===(currentUser.username||'').toLowerCase())){showToast('you are banned');return;}
   const nick=anonMode?'anon':filterText(currentUser.username);
-  if(!isAdmin&&bannedNames.some(b=>(b.name||b)===(currentUser?.username||'').toLowerCase())){showToast('you are banned');return;}
   const input=document.getElementById(`reply-input-${confId}`);
-  const rawText=input.value.trim();if(!rawText)return;
+  const rawText=input.value.trim(); if(!rawText) return;
   const text=filterText(rawText);
   input.value='';
   await addDoc(collection(db,'confessions',confId,'replies'),{nickname:nick,text,isAdmin,createdAt:serverTimestamp()});
   await updateDoc(doc(db,'confessions',confId),{replyCount:increment(1)});
 };
 
-// Report
+// ── EDIT/DELETE OWN ───────────────────────────────────────────
+window.openEditForm = function(id){ document.getElementById(`edit-form-${id}`)?.classList.add('open'); };
+window.closeEditForm = function(id){ document.getElementById(`edit-form-${id}`)?.classList.remove('open'); };
+
+window.saveEdit = async function(id){
+  const rawText=document.getElementById(`edit-text-${id}`).value.trim();
+  if(!rawText) return;
+  const text=filterText(rawText);
+  const orig=allConfessions.find(c=>c.id===id)?.text||'';
+  await updateDoc(doc(db,'confessions',id),{text,edited:true});
+  closeEditForm(id);
+  activityLog.unshift({type:'edit',id,preview:orig.slice(0,80),time:Date.now()});
+  if(activityLog.length>100) activityLog=activityLog.slice(0,100);
+  localStorage.setItem('activityLog',JSON.stringify(activityLog));
+  showToast('confession updated');
+};
+
+window.deleteOwnPost = async function(id){
+  if(!confirm('Delete your confession?')) return;
+  const orig=allConfessions.find(c=>c.id===id)?.text||'';
+  const rs=await getDocs(collection(db,'confessions',id,'replies'));
+  for(const r of rs.docs) await deleteDoc(r.ref);
+  await deleteDoc(doc(db,'confessions',id));
+  delete myTokens[id];
+  localStorage.setItem('myTokens',JSON.stringify(myTokens));
+  activityLog.unshift({type:'delete',id,preview:orig.slice(0,80),time:Date.now()});
+  if(activityLog.length>100) activityLog=activityLog.slice(0,100);
+  localStorage.setItem('activityLog',JSON.stringify(activityLog));
+  showToast('confession deleted');
+};
+
+// ── REPORT ────────────────────────────────────────────────────
 let reportTarget=null;
 window.openReport=function(id){reportTarget=id;document.getElementById('reportModal').classList.add('active');};
 window.closeReport=function(){document.getElementById('reportModal').classList.remove('active');reportTarget=null;};
 window.confirmReport=async function(){
-  if(!reportTarget)return;
-  reported[reportTarget]=true;localStorage.setItem('reported',JSON.stringify(reported));
+  if(!reportTarget) return;
+  reported[reportTarget]=true; localStorage.setItem('reported',JSON.stringify(reported));
   await updateDoc(doc(db,'confessions',reportTarget),{reports:increment(1)});
-  closeReport();showToast('reported — thank you');
+  closeReport(); showToast('reported');
 };
 
-// Admin login
+// ── ADMIN ─────────────────────────────────────────────────────
 window.openAdminLogin=function(){
-  if(isAdmin){openAdmin();return;}
   document.getElementById('adminPassword').value='';
   document.getElementById('passwordError').classList.remove('show');
   document.getElementById('passwordModal').classList.add('active');
@@ -1164,16 +1106,19 @@ window.openAdminLogin=function(){
 window.closePasswordModal=function(){document.getElementById('passwordModal').classList.remove('active');};
 window.checkPassword=function(){
   if(document.getElementById('adminPassword').value===ADMIN_PASSWORD){
+    isAdmin=true; sessionStorage.setItem('isAdmin','true');
+    applyLockdown(); openAdmin();
     document.getElementById('passwordModal').classList.remove('active');
-    isAdmin=true;sessionStorage.setItem('isAdmin','true');applyLockdown();openAdmin();
-  }else{
+  } else {
     document.getElementById('passwordError').classList.add('show');
     document.getElementById('adminPassword').value='';
-    document.getElementById('adminPassword').focus();
   }
 };
 
-window.openAdmin=function(){document.getElementById('adminPanel').classList.add('active');loadAdminData();};
+function openAdmin(){
+  document.getElementById('adminPanel').classList.add('active');
+  switchTab('reported');
+}
 window.closeAdmin=function(){
   document.getElementById('adminPanel').classList.remove('active');
   if(accountsUnsubscribe){accountsUnsubscribe();accountsUnsubscribe=null;}
@@ -1184,40 +1129,37 @@ window.switchTab=function(tab){
   document.querySelectorAll('.admin-tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   tabs.forEach(t=>document.getElementById(`tab-${t}`).classList.toggle('active',t===tab));
   if(tab==='settings'){loadSettingsUI();renderBannedList();}
-  else if(tab==='log')renderActivityLog();
-  else if(tab==='bans')renderBansTab();
-  else if(tab==='accounts')loadAccountsTab();
+  else if(tab==='log') renderActivityLog();
+  else if(tab==='bans') renderBansTab();
+  else if(tab==='accounts') loadAccountsTab();
   else loadAdminData();
 };
 
 async function loadAdminData(){
   const snap=await getDocs(query(collection(db,'confessions'),orderBy('createdAt','desc')));
   const all=snap.docs.map(d=>({id:d.id,...d.data()}));
-  const reps=all.filter(c=>(c.reports||0)>0).sort((a,b)=>(b.reports||0)-(a.reports||0));
-  const pend=all.filter(c=>c.pending);
-  renderAdminList('reported-list',reps,true);
-  renderAdminList('pending-list',pend,false,true);
-  renderAdminList('all-list',all,false);
+  const reported_list=all.filter(c=>(c.reports||0)>0);
+  const pending_list=all.filter(c=>c.pending);
+  renderAdminList('reported-list',reported_list);
+  renderAdminList('pending-list',pending_list);
+  renderAdminList('all-list',all);
 }
 
-async function renderAdminList(containerId,items,reportedOnly,pendingOnly){
-  const container=document.getElementById(containerId);
-  if(!items.length){container.innerHTML=`<div class="admin-empty">${reportedOnly?'no reported confessions':pendingOnly?'no pending confessions':'no confessions yet'}</div>`;return;}
-  container.innerHTML='';
-  for(const conf of items){
-    const repliesSnap=await getDocs(query(collection(db,'confessions',conf.id,'replies'),orderBy('createdAt','asc')));
-    const replies=repliesSnap.docs.map(d=>({id:d.id,...d.data()}));
-    const card=document.createElement('div');
-    card.className=`admin-card${(conf.reports||0)>0?' has-reports':''}${conf.pending?' pending-admin':''}`;
-    card.id=`admin-card-${conf.id}`;
-    card.innerHTML=`
+async function renderAdminList(elId,list){
+  const el=document.getElementById(elId);
+  if(!list.length){el.innerHTML='<div class="admin-empty">nothing here</div>';return;}
+  const withReplies=await Promise.all(list.map(async conf=>{
+    const rs=await getDocs(collection(db,'confessions',conf.id,'replies'));
+    return{...conf,replies:rs.docs.map(d=>({id:d.id,...d.data()}))};
+  }));
+  el.innerHTML=withReplies.map(conf=>`
+    <div class="admin-card${(conf.reports||0)>0?' has-reports':''}${conf.pending?' pending-admin':''}" id="admin-card-${conf.id}">
       <div class="admin-card-meta">
         <span class="admin-card-nick">~${esc(conf.nickname||'anon')}</span>
         <div class="admin-card-info">
-          ${(conf.reports||0)>0?`<span class="report-count">${conf.reports} report${conf.reports>1?'s':''}</span>`:''}
-          ${conf.pending?'<span class="pending-tag">pending</span>':''}
-          ${conf.pinned?'<span style="color:var(--gold);font-size:10px;">pinned</span>':''}
           <span class="admin-card-time">${timeAgo(conf.createdAt)}</span>
+          ${(conf.reports||0)>0?`<span class="report-count">${conf.reports} reports</span>`:''}
+          ${conf.pending?'<span class="pending-tag">pending</span>':''}
         </div>
       </div>
       <div class="admin-card-text">${esc(conf.text)}</div>
@@ -1228,100 +1170,110 @@ async function renderAdminList(containerId,items,reportedOnly,pendingOnly){
         <button class="admin-btn" style="background:var(--red-dim);border:1px solid rgba(255,80,80,0.3);color:var(--red);" onclick="openBanModal('${esc(conf.nickname||'anon')}')">Ban user</button>
         ${(conf.reports||0)>0?`<button class="admin-btn admin-btn-clear" onclick="clearReports('${conf.id}')">Clear reports</button>`:''}
       </div>
-      ${replies.length?`<div class="admin-replies">
-        <div style="font-size:10px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase">Replies (${replies.length})</div>
-        ${replies.map(r=>`<div class="admin-reply-item" id="admin-reply-${r.id}">
+      ${conf.replies&&conf.replies.length?`<div class="admin-replies">
+        <div style="font-size:10px;letter-spacing:0.15em;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase">Replies (${conf.replies.length})</div>
+        ${conf.replies.map(r=>`<div class="admin-reply-item" id="admin-reply-${r.id}">
           <div><div class="admin-reply-nick">~${esc(r.nickname||'anon')}</div><div class="admin-reply-text">${esc(r.text)}</div></div>
           <button class="admin-btn-delete-reply" onclick="deleteReply('${conf.id}','${r.id}')">Delete</button>
         </div>`).join('')}
-      </div>`:''}`;
-    container.appendChild(card);
-  }
+      </div>`:''}
+    </div>`).join('');
 }
 
 window.approveConfession=async function(id){
   await updateDoc(doc(db,'confessions',id),{pending:false});
-  document.getElementById(`admin-card-${id}`)?.remove();
-  showToast('confession approved');
+  showToast('confession approved'); loadAdminData();
 };
-
 window.togglePin=async function(id,isPinned){
   await updateDoc(doc(db,'confessions',id),{pinned:!isPinned});
-  showToast(isPinned?'unpinned':'pinned');
-  loadAdminData();
+  showToast(isPinned?'unpinned':'pinned'); loadAdminData();
 };
-
 window.deleteConfession=async function(id){
-  if(!confirm('Delete this confession and all its replies?'))return;
+  if(!confirm('Delete this confession and all its replies?')) return;
   const rs=await getDocs(collection(db,'confessions',id,'replies'));
-  for(const r of rs.docs)await deleteDoc(r.ref);
+  for(const r of rs.docs) await deleteDoc(r.ref);
   await deleteDoc(doc(db,'confessions',id));
   document.getElementById(`admin-card-${id}`)?.remove();
   showToast('confession deleted');
 };
-
 window.deleteReply=async function(confId,replyId){
   await deleteDoc(doc(db,'confessions',confId,'replies',replyId));
   await updateDoc(doc(db,'confessions',confId),{replyCount:increment(-1)});
   document.getElementById(`admin-reply-${replyId}`)?.remove();
   showToast('reply deleted');
 };
-
 window.clearReports=async function(id){
   await updateDoc(doc(db,'confessions',id),{reports:0});
-  document.getElementById(`admin-card-${id}`)?.remove();
-  showToast('reports cleared');
+  showToast('reports cleared'); loadAdminData();
 };
 
-// Activity log
-function addLogEntry(type, nickname, text, confId){
-  activityLog.unshift({type, nickname, text:text.slice(0,120), confId, time:Date.now()});
-  if(activityLog.length>100)activityLog=activityLog.slice(0,100);
-  localStorage.setItem('activityLog',JSON.stringify(activityLog));
-}
-
+// ── ACTIVITY LOG ──────────────────────────────────────────────
 function renderActivityLog(){
   const el=document.getElementById('activity-log-list');
   if(!activityLog.length){el.innerHTML='<div class="log-empty">no activity yet</div>';return;}
   el.innerHTML=activityLog.map(e=>`
     <div class="log-entry">
       <div class="log-body">
-        <div class="log-action"><strong>~${esc(e.nickname)}</strong> ${e.type==='edit'?'edited':'deleted'} their confession</div>
-        <div class="log-preview">"${esc(e.text)}${e.text.length>=120?'…':''}"</div>
+        <div class="log-action"><strong>${e.type==='edit'?'Edited':'Deleted'}</strong> a confession</div>
+        <div class="log-preview">"${esc(e.preview)}"</div>
         <div class="log-time">${new Date(e.time).toLocaleString()}</div>
       </div>
     </div>`).join('');
 }
-
 window.clearLog=function(){
-  if(!confirm('Clear the entire activity log?'))return;
+  if(!confirm('Clear activity log?')) return;
   activityLog=[];
-  localStorage.setItem('activityLog','[]');
+  localStorage.setItem('activityLog',JSON.stringify(activityLog));
   renderActivityLog();
-  showToast('log cleared');
 };
 
-// Banned names — compact version for settings
-function renderBannedList(){
-  const el=document.getElementById('banned-list');
-  if(!el)return;
-  if(!bannedNames.length){el.innerHTML='<div style="color:var(--text-dim);font-size:11px;padding:8px 0;">no banned names</div>';return;}
-  el.innerHTML=bannedNames.map(b=>{
-    const name=b.name||b;
-    return`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);gap:12px;">
-      <span style="color:var(--red);font-size:12px;">~${esc(name)}</span>
-      <button class="admin-btn-delete-reply" onclick="unbanNickname('${esc(name)}')">Unban</button>
-    </div>`;
-  }).join('');
-}
+// ── BANS TAB ──────────────────────────────────────────────────
+window.banByUsername=async function(){
+  const val=document.getElementById('banUsernameInput').value.trim().toLowerCase();
+  const reason=document.getElementById('banReasonManual').value.trim();
+  if(!val){showToast('enter a username');return;}
+  if(bannedNames.some(b=>(b.name||b)===val)){showToast(`~${val} is already banned`);return;}
+  bannedNames.push({name:val,reason});
+  await setDoc(doc(db,'siteSettings','config'),{bannedNames},{merge:true});
+  document.getElementById('banUsernameInput').value='';
+  document.getElementById('banReasonManual').value='';
+  renderBansTab(); showToast(`~${val} banned`);
+};
 
-// Banned names — full panel for Bans tab
+window.openBanModal=function(nick){
+  banTarget={nick};
+  document.getElementById('banReasonInput').value='';
+  document.getElementById('banReasonModal').classList.add('active');
+  setTimeout(()=>document.getElementById('banReasonInput').focus(),100);
+};
+window.closeBanModal=function(){
+  document.getElementById('banReasonModal').classList.remove('active');
+  banTarget=null;
+};
+window.confirmBan=async function(){
+  if(!banTarget) return;
+  const reason=document.getElementById('banReasonInput').value.trim();
+  const val=banTarget.nick.toLowerCase();
+  bannedNames=bannedNames.filter(b=>(b.name||b)!==val);
+  bannedNames.push({name:val,reason});
+  await setDoc(doc(db,'siteSettings','config'),{bannedNames},{merge:true});
+  closeBanModal(); renderBansTab(); renderBannedList();
+  showToast(`~${val} banned`);
+};
+
+window.unbanNickname=async function(name){
+  bannedNames=bannedNames.filter(b=>(b.name||b)!==name);
+  await setDoc(doc(db,'siteSettings','config'),{bannedNames},{merge:true});
+  renderBansTab(); renderBannedList();
+  showToast(`~${name} unbanned`);
+};
+
 function renderBansTab(){
   const el=document.getElementById('bans-list');
+  if(!el) return;
   if(!bannedNames.length){el.innerHTML='<div class="admin-empty">no banned users</div>';return;}
   el.innerHTML=bannedNames.map((b,i)=>{
-    const name=b.name||b;
-    const reason=b.reason||'';
+    const name=b.name||b, reason=b.reason||'';
     return`<div class="admin-card" style="margin-bottom:10px;">
       <div style="margin-bottom:10px;">
         <div style="color:var(--red);font-family:'Syne',sans-serif;font-weight:700;font-size:14px;margin-bottom:4px;">~${esc(name)}</div>
@@ -1329,88 +1281,23 @@ function renderBansTab(){
       </div>
       <div style="display:flex;gap:8px;">
         <button class="admin-btn admin-btn-clear" onclick="unbanNickname('${esc(name)}')">Unban</button>
-        <button class="admin-btn admin-btn-delete" onclick="unbanAll(${i})">Remove</button>
       </div>
     </div>`;
   }).join('');
 }
 
-window.banNickname=async function(){
-  const val=document.getElementById('banInput').value.trim().toLowerCase();
-  if(!val)return;
-  if(!bannedNames.some(b=>(b.name||b)===val))bannedNames.push({name:val,reason:''});
-  await setDoc(doc(db,'siteSettings','config'),{bannedNames},{merge:true});
-  document.getElementById('banInput').value='';
-  renderBannedList();
-  showToast(`~${val} banned`);
-};
-
-let banTarget = null;
-window.openBanModal = function(nick){
-  banTarget = {nick};
-  document.getElementById('banReasonInput').value = '';
-  document.getElementById('banReasonModal').classList.add('active');
-  setTimeout(()=>document.getElementById('banReasonInput').focus(), 100);
-};
-window.closeBanModal = function(){
-  document.getElementById('banReasonModal').classList.remove('active');
-  banTarget = null;
-};
-window.confirmBan = async function(){
-  if(!banTarget) return;
-  const reason = document.getElementById('banReasonInput').value.trim();
-  const val = banTarget.nick.toLowerCase();
-  bannedNames = bannedNames.filter(b=>(b.name||b)!==val);
-  bannedNames.push({name:val, reason});
-  await setDoc(doc(db,'siteSettings','config'),{bannedNames},{merge:true});
-  closeBanModal();
-  renderBannedList();
-  renderBansTab();
-  showToast(`~${val} banned`);
-};
-
-window.unbanNickname=async function(name){
-  bannedNames=bannedNames.filter(b=>(b.name||b)!==name);
-  await setDoc(doc(db,'siteSettings','config'),{bannedNames},{merge:true});
-  renderBannedList();renderBansTab();
-  showToast(`~${name} unbanned`);
-};
-
-window.unbanAll=async function(index){
-  bannedNames.splice(index,1);
-  await setDoc(doc(db,'siteSettings','config'),{bannedNames},{merge:true});
-  renderBannedList();renderBansTab();
-  showToast('ban removed');
-};
-
-window.banByUsername = async function(){
-  const val = document.getElementById('banUsernameInput').value.trim().toLowerCase();
-  const reason = document.getElementById('banReasonManual').value.trim();
-  if(!val){showToast('enter a username');return;}
-  if(bannedNames.some(b=>(b.name||b)===val)){showToast(`~${val} is already banned`);return;}
-  bannedNames.push({name:val, reason});
-  await setDoc(doc(db,'siteSettings','config'),{bannedNames},{merge:true});
-  document.getElementById('banUsernameInput').value='';
-  document.getElementById('banReasonManual').value='';
-  renderBansTab();
-  showToast(`~${val} banned`);
-};
-
-// Accounts tab
-let accountsUnsubscribe = null;
-
+// ── ACCOUNTS TAB ──────────────────────────────────────────────
 function loadAccountsTab(){
   const el=document.getElementById('accounts-list');
+  if(!el) return;
   el.innerHTML='<div class="admin-empty">loading...</div>';
-  // Unsubscribe previous listener if any
   if(accountsUnsubscribe){accountsUnsubscribe();accountsUnsubscribe=null;}
   accountsUnsubscribe=onSnapshot(collection(db,'users'),snap=>{
-    if(snap.empty){el.innerHTML='<div class="admin-empty">no accounts yet</div>';return;}
+    if(!snap||snap.empty){el.innerHTML='<div class="admin-empty">no accounts yet</div>';return;}
     const isBanned=name=>bannedNames.some(b=>(b.name||b)===name.toLowerCase());
     el.innerHTML=snap.docs.map(d=>{
-      const u=d.data();
-      const uid=d.id;
-      const banned=isBanned(u.username);
+      const u=d.data(), uid=d.id;
+      const banned=isBanned(u.username||'');
       return`<div class="admin-card" id="acct-${uid}" style="margin-bottom:10px;${banned?'border-color:rgba(255,80,80,0.3);':''}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
           <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--accent);">~${esc(u.username)}${banned?'<span style="margin-left:8px;font-size:10px;color:var(--red);background:var(--red-dim);border:1px solid rgba(255,80,80,0.3);padding:2px 8px;border-radius:6px;">banned</span>':''}</div>
@@ -1420,7 +1307,7 @@ function loadAccountsTab(){
           <div>
             <div style="font-size:10px;color:var(--text-muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px;">Username</div>
             <div style="display:flex;gap:6px;">
-              <input type="text" id="uname-${uid}" value="${esc(u.username)}" class="settings-text-input" style="flex:1;" placeholder="new username">
+              <input type="text" id="uname-${uid}" value="${esc(u.username)}" class="settings-text-input" style="flex:1;">
               <button class="settings-save" onclick="changeUsername('${uid}','${esc(u.username)}')">Save</button>
             </div>
           </div>
@@ -1440,37 +1327,46 @@ function loadAccountsTab(){
         </div>
       </div>`;
     }).join('');
-  },e=>{el.innerHTML=`<div class="admin-empty">error: ${e.message}</div>`;});
+  });
 }
 
-window.changeUsername = async function(uid, oldName){
-  const newName = document.getElementById(`uname-${uid}`).value.trim().toLowerCase();
+window.changeUsername=async function(uid,oldName){
+  const newName=document.getElementById(`uname-${uid}`).value.trim().toLowerCase();
   if(!newName||newName===oldName){showToast('no change');return;}
   if(!/^[a-z0-9_]+$/.test(newName)){showToast('letters, numbers and _ only');return;}
   const existing=await getDocs(query(collection(db,'users'),where('username','==',newName)));
   if(!existing.empty){showToast('username already taken');return;}
   await updateDoc(doc(db,'users',uid),{username:newName});
   showToast(`username changed to ~${newName}`);
-  loadAccountsTab();
 };
-
-window.changePassword = async function(uid){
-  const newPwd = document.getElementById(`upwd-${uid}`).value.trim();
+window.changePassword=async function(uid){
+  const newPwd=document.getElementById(`upwd-${uid}`).value.trim();
   if(!newPwd){showToast('enter a new password');return;}
   if(newPwd.length<6){showToast('password must be 6+ characters');return;}
   await updateDoc(doc(db,'users',uid),{password:hashPassword(newPwd)});
   document.getElementById(`upwd-${uid}`).value='';
   showToast('password updated');
 };
-
-window.deleteAccount = async function(uid, username){
-  if(!confirm(`Delete account ~${username}? This cannot be undone.`))return;
+window.deleteAccount=async function(uid,username){
+  if(!confirm(`Delete account ~${username}? This cannot be undone.`)) return;
   await deleteDoc(doc(db,'users',uid));
-  document.getElementById(`acct-${uid}`)?.remove();
   showToast(`~${username} deleted`);
 };
 
-// Settings
+// ── SETTINGS ──────────────────────────────────────────────────
+function renderBannedList(){
+  const el=document.getElementById('banned-list');
+  if(!el) return;
+  if(!bannedNames.length){el.innerHTML='<div style="color:var(--text-dim);font-size:11px;padding:8px 0;">no banned names</div>';return;}
+  el.innerHTML=bannedNames.map(b=>{
+    const name=b.name||b;
+    return`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);gap:12px;">
+      <span style="color:var(--red);font-size:12px;">~${esc(name)}</span>
+      <button class="admin-btn-delete-reply" onclick="unbanNickname('${esc(name)}')">Unban</button>
+    </div>`;
+  }).join('');
+}
+
 function loadSettingsUI(){
   document.getElementById('slowmodeSeconds').value=slowmodeDelay;
   document.getElementById('filterToggle').checked=filterEnabled;
@@ -1494,62 +1390,52 @@ window.saveLockdown=async function(){
   await setDoc(doc(db,'siteSettings','config'),{siteLocked,lockReason,approvalMode},{merge:true});
   showToast(siteLocked?'site locked for everyone':'site unlocked');
 };
-
 window.onPresetChange=function(){
   const val=document.getElementById('lockReasonPreset').value;
-  const custom=document.getElementById('lockReasonCustom');
-  custom.style.display=val==='custom'?'':'none';
-  if(val==='custom')custom.focus();
+  document.getElementById('lockReasonCustom').style.display=val==='custom'?'':'none';
+  if(val==='custom') document.getElementById('lockReasonCustom').focus();
 };
-
 window.saveLockReason=async function(){
   const val=document.getElementById('lockReasonPreset').value;
-  if(val==='custom')lockReason=document.getElementById('lockReasonCustom').value.trim()||lockReason;
-  else if(val)lockReason=val;
+  if(val==='custom') lockReason=document.getElementById('lockReasonCustom').value.trim()||lockReason;
+  else if(val) lockReason=val;
   await setDoc(doc(db,'siteSettings','config'),{siteLocked,lockReason,approvalMode},{merge:true});
   showToast('lockdown reason saved');
 };
-
 window.saveApprovalMode=async function(){
   approvalMode=document.getElementById('approvalToggle').checked;
   await setDoc(doc(db,'siteSettings','config'),{siteLocked,lockReason,approvalMode},{merge:true});
   document.getElementById('approvalStatus').textContent=approvalMode?'on':'off';
   showToast(`approval mode ${approvalMode?'on':'off'}`);
 };
-
 window.saveAutoDelete=async function(){
   autoDeleteDays=parseInt(document.getElementById('autoDeleteDays').value)||0;
   await setDoc(doc(db,'siteSettings','config'),{autoDeleteDays},{merge:true});
   showToast(autoDeleteDays?`posts older than ${autoDeleteDays}d will be removed`:'auto-delete disabled');
 };
-
 window.saveSlowmode=async function(){
   slowmodeDelay=parseInt(document.getElementById('slowmodeSeconds').value)||0;
   await setDoc(doc(db,'siteSettings','config'),{slowmodeDelay},{merge:true});
   showToast(`slowmode set to ${slowmodeDelay}s`);
 };
-
 window.saveFilterToggle=async function(){
   filterEnabled=document.getElementById('filterToggle').checked;
   await setDoc(doc(db,'siteSettings','config'),{filterEnabled},{merge:true});
   document.getElementById('filterStatus').textContent=filterEnabled?'on':'off';
   showToast(`bad word filter ${filterEnabled?'enabled':'disabled'}`);
 };
-
 window.saveCustomWords=async function(){
   const val=document.getElementById('customWords').value;
   customWords=val.split(',').map(w=>w.trim().toLowerCase()).filter(Boolean);
   await setDoc(doc(db,'siteSettings','config'),{customWords},{merge:true});
   showToast(`${customWords.length} custom word${customWords.length!==1?'s':''} saved`);
 };
-
 window.saveDailyTopic=async function(){
   dailyTopic=document.getElementById('dailyTopic').value.trim();
   await setDoc(doc(db,'siteSettings','config'),{dailyTopic},{merge:true});
   applyDailyTopic();
   showToast(dailyTopic?'banner set':'banner cleared');
 };
-
 window.clearDailyTopic=async function(){
   dailyTopic='';
   await setDoc(doc(db,'siteSettings','config'),{dailyTopic:''},{merge:true});
@@ -1557,14 +1443,33 @@ window.clearDailyTopic=async function(){
   applyDailyTopic();
   showToast('banner cleared');
 };
+window.banNickname=async function(){
+  const val=document.getElementById('banInput').value.trim().toLowerCase();
+  if(!val) return;
+  if(!bannedNames.some(b=>(b.name||b)===val)) bannedNames.push({name:val,reason:''});
+  await setDoc(doc(db,'siteSettings','config'),{bannedNames},{merge:true});
+  document.getElementById('banInput').value='';
+  renderBannedList(); showToast(`~${val} banned`);
+};
 
-function showToast(msg){
-  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),2500);
-}
+// ── INIT ──────────────────────────────────────────────────────
+document.addEventListener('click',e=>{
+  const notifWrap=document.querySelector('.notif-wrap');
+  if(notifWrap&&!notifWrap.contains(e.target)) document.getElementById('notifPanel').classList.remove('open');
+  const userWrap=document.querySelector('.user-wrap');
+  if(userWrap&&!userWrap.contains(e.target)) closeUserMenu();
+});
+document.getElementById('confessionText').addEventListener('input',function(){
+  document.getElementById('charCount').textContent=this.value.length;
+});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&e.target.classList.contains('reply-input')) submitReply(e.target.id.replace('reply-input-',''));
+});
 
-document.getElementById('confessionText').addEventListener('input',function(){document.getElementById('charCount').textContent=this.value.length;});
-document.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.classList.contains('reply-input'))window.submitReply(e.target.id.replace('reply-input-',''));});
+updateNotifBadge();
+watchOwnedReplies();
+if(currentUser){ applyUserUI(); } else { showAuthScreen(); }
+
 </script>
 </body>
 </html>
