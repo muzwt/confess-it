@@ -203,11 +203,10 @@
   </div>
 
   <div class="locked-banner" id="lockedBanner">
-    <span class="locked-banner-icon">🔒</span>
     <span class="locked-banner-text" id="lockedBannerText">This site is currently locked.</span>
   </div>
   <div class="approval-banner" id="approvalBanner">
-    ⏳ <span>Confessions require approval before appearing.</span>
+    <span>Confessions require approval before appearing.</span>
   </div>
 
   <div class="post-form" id="postForm">
@@ -292,10 +291,10 @@
           <div class="settings-control" style="flex-direction:column;align-items:flex-end;gap:8px;">
             <select id="lockReasonPreset" class="settings-select" onchange="onPresetChange()">
               <option value="">— choose a reason —</option>
-              <option value="Under maintenance. Back soon.">🔧 Maintenance</option>
-              <option value="Taking a break. Back later.">☕ Taking a break</option>
-              <option value="Temporarily closed for moderation.">🛡️ Moderation</option>
-              <option value="custom">✏️ Custom reason...</option>
+              <option value="Under maintenance. Back soon.">Maintenance</option>
+              <option value="Taking a break. Back later.">Taking a break</option>
+              <option value="Temporarily closed for moderation.">Moderation</option>
+              <option value="custom">Custom reason...</option>
             </select>
             <input type="text" id="lockReasonCustom" placeholder="type your reason..." maxlength="120" class="settings-text-input" style="display:none;" onfocus="this.style.borderColor='var(--admin)'" onblur="this.style.borderColor='var(--border)'">
             <button class="settings-save" onclick="saveLockReason()">Save reason</button>
@@ -507,7 +506,7 @@ function renderFeed(confessions){
       ${conf.pending?'<div class="pending-banner">Awaiting approval</div>':''}
       <div class="card-body">
         <div class="card-meta">
-          <span class="card-nick">~${esc(conf.nickname||'anon')}${conf.isAdmin?'<span class="admin-badge">✓</span>':''}</span>
+          <span class="card-nick">~${esc(conf.nickname||'anon')}</span>
           <span class="card-time">${timeAgo(conf.createdAt)}</span>
         </div>
         <div class="card-text">${esc(conf.text)}</div>
@@ -613,7 +612,7 @@ function loadReplies(confId){
   list.innerHTML='<div class="loading" style="padding:16px 24px">loading...</div>';
   onSnapshot(query(collection(db,'confessions',confId,'replies'),orderBy('createdAt','asc')),snap=>{
     if(snap.empty){list.innerHTML='';return;}
-    list.innerHTML=snap.docs.map(d=>{const r=d.data();return`<div class="reply-item"><div class="reply-meta"><span class="reply-nick">~${esc(r.nickname||'anon')}${r.isAdmin?'<span class="admin-badge">✓</span>':''}</span><span class="reply-time">${timeAgo(r.createdAt)}</span></div><div class="reply-text">${esc(r.text)}</div></div>`;}).join('');
+    list.innerHTML=snap.docs.map(d=>{const r=d.data();return`<div class="reply-item"><div class="reply-meta"><span class="reply-nick">~${esc(r.nickname||'anon')}</span><span class="reply-time">${timeAgo(r.createdAt)}</span></div><div class="reply-text">${esc(r.text)}</div></div>`;}).join('');
   });
 }
 
@@ -697,9 +696,9 @@ async function renderAdminList(containerId,items,reportedOnly,pendingOnly){
       <div class="admin-card-meta">
         <span class="admin-card-nick">~${esc(conf.nickname||'anon')}</span>
         <div class="admin-card-info">
-          ${(conf.reports||0)>0?`<span class="report-count">⚠ ${conf.reports} report${conf.reports>1?'s':''}</span>`:''}
-          ${conf.pending?'<span class="pending-tag">⏳ pending</span>':''}
-          ${conf.pinned?'<span style="color:var(--gold);font-size:10px;">📌 pinned</span>':''}
+          ${(conf.reports||0)>0?`<span class="report-count">${conf.reports} report${conf.reports>1?'s':''}</span>`:''}
+          ${conf.pending?'<span class="pending-tag">pending</span>':''}
+          ${conf.pinned?'<span style="color:var(--gold);font-size:10px;">pinned</span>':''}
           <span class="admin-card-time">${timeAgo(conf.createdAt)}</span>
         </div>
       </div>
@@ -729,7 +728,7 @@ window.approveConfession=async function(id){
 
 window.togglePin=async function(id,isPinned){
   await updateDoc(doc(db,'confessions',id),{pinned:!isPinned});
-  showToast(isPinned?'unpinned':'📌 pinned');
+  showToast(isPinned?'unpinned':'pinned');
   loadAdminData();
 };
 
@@ -806,7 +805,7 @@ window.saveLockdown=function(){
   localStorage.setItem('siteLocked',siteLocked);
   document.getElementById('lockStatus').textContent=siteLocked?'locked':'unlocked';
   document.getElementById('lockStatus').style.color=siteLocked?'var(--red)':'var(--text-muted)';
-  applyLockdown();showToast(siteLocked?'🔒 site locked':'🔓 site unlocked');
+  applyLockdown();showToast(siteLocked?'site locked':'site unlocked');
 };
 
 window.onPresetChange=function(){
