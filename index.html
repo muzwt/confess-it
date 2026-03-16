@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Confess It</title>
+<title>Uplift</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after{box-sizing:border-box;margin:0;padding:0;}
@@ -112,6 +112,7 @@
   .action-btn.op-delete:hover{color:var(--red);}
   .report-badge{margin-left:auto;background:var(--red-dim);border:1px solid rgba(255,80,80,0.25);color:var(--red);font-size:10px;padding:2px 8px;border-radius:6px;}
   .op-badge{font-size:9px;color:var(--text-muted);letter-spacing:0.08em;border:1px solid var(--border);padding:1px 5px;border-radius:4px;}
+  .verified-badge{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;background:var(--accent);border-radius:50%;color:#0d0d0d;font-size:9px;font-weight:900;flex-shrink:0;}
   .edit-form{padding:16px 24px;border-top:1px solid var(--border);background:var(--bg2);display:none;border-radius:0 0 16px 16px;}
   .edit-form.open{display:block;}
   .edit-textarea{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:"DM Mono",monospace;font-size:14px;line-height:1.7;padding:10px 12px;outline:none;resize:none;transition:border-color 0.2s;}
@@ -274,8 +275,8 @@
 <div class="container">
   <header>
     <div>
-      <div class="logo">Confess It</div>
-      <div class="tagline">Get it off your chest!</div>
+      <div class="logo">Uplift</div>
+      <div class="tagline">Advice from real people.</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <div class="notif-wrap">
@@ -343,14 +344,14 @@
   </div>
 
   <div id="feed"><div class="loading">loading...</div></div>
-  <footer>confess it &mdash; no logs, no traces</footer>
+  <footer>uplift &mdash; no logs, no traces</footer>
 </div>
 
 <!-- Auth screen -->
 <div class="auth-screen" id="authScreen">
   <div class="auth-box">
-    <div class="auth-logo">Confess It</div>
-    <div class="auth-tagline">Get it off your chest!</div>
+    <div class="auth-logo">Uplift</div>
+    <div class="auth-tagline">Advice from real people.</div>
     <div class="auth-tabs">
       <button class="auth-tab active" id="loginTab" onclick="switchAuthTab('login')">Log in</button>
       <button class="auth-tab" id="signupTab" onclick="switchAuthTab('signup')">Sign up</button>
@@ -497,6 +498,14 @@
             <button class="settings-save" onclick="saveCustomWords()">Save</button>
           </div>
         </div>
+        <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:12px;">
+          <div><div class="settings-label">Verified users</div><div class="settings-desc">These users get a ✓ badge next to their name</div></div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="verifyInput" placeholder="username to verify" class="settings-text-input" style="flex:1;" onfocus="this.style.borderColor='var(--admin)'" onblur="this.style.borderColor='var(--border)'" onkeydown="if(event.key==='Enter')addVerified()">
+            <button class="settings-save" onclick="addVerified()">Add</button>
+          </div>
+          <div id="verified-list"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -580,6 +589,7 @@ let siteLocked = false, lockReason = 'This site is currently locked.';
 let approvalMode = false, filterEnabled = false;
 let customWords = [], bannedNames = [], dailyTopic = '';
 let autoDeleteDays = 0, slowmodeDelay = 30;
+let verifiedUsers = [];
 
 // localStorage state
 const liked = JSON.parse(localStorage.getItem('liked')||'{}');
@@ -891,6 +901,7 @@ onSnapshot(doc(db,'siteSettings','config'),snap=>{
   autoDeleteDays=d.autoDeleteDays||0;
   bannedNames=d.bannedNames||[];
   slowmodeDelay=d.slowmodeDelay??30;
+  verifiedUsers=d.verifiedUsers||[];
   applyLockdown();
   applyDailyTopic();
   checkIfBanned();
@@ -949,7 +960,7 @@ function confessionCard(conf){
     ${conf.pending?'<div class="pending-banner">⏳ Awaiting approval</div>':''}
     <div class="card-body">
       <div class="card-meta">
-        <span class="card-nick">~${esc(conf.nickname||'anonymous')}</span>
+        <span class="card-nick">~${esc(conf.nickname||'anonymous')}${verifiedUsers.includes((conf.realUsername||conf.nickname||'').toLowerCase())?'<span class="verified-badge">✓</span>':''}</span>
         <span class="card-time">${timeAgo(conf.createdAt)}</span>
       </div>
       <div class="card-text">${esc(conf.text)}${conf.edited?'<span class="edited-tag">(edited)</span>':''}</div>
@@ -1071,7 +1082,7 @@ function loadReplies(confId,confNick){
       // OP = reply was made by the original confession author
       const replyAuthor=r.realUsername||r.nickname||'';
       const isOP=confRealAuthor&&replyAuthor&&confRealAuthor===replyAuthor;
-      return`<div class="reply-item"><div class="reply-meta"><span class="reply-nick">~${esc(r.nickname||'anonymous')}${isOP?'<span class="op-badge">OP</span>':''}</span><span class="reply-time">${timeAgo(r.createdAt)}</span></div><div class="reply-text">${esc(r.text)}</div></div>`;
+      return`<div class="reply-item"><div class="reply-meta"><span class="reply-nick">~${esc(r.nickname||'anonymous')}${verifiedUsers.includes((r.realUsername||r.nickname||'').toLowerCase())?'<span class="verified-badge">✓</span>':''}${isOP?'<span class="op-badge">OP</span>':''}</span><span class="reply-time">${timeAgo(r.createdAt)}</span></div><div class="reply-text">${esc(r.text)}</div></div>`;
     }).join('');
   });
 }
@@ -1165,7 +1176,7 @@ window.switchTab=function(tab){
   const tabs=['reported','pending','all','log','bans','accounts','settings'];
   document.querySelectorAll('.admin-tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   tabs.forEach(t=>document.getElementById(`tab-${t}`).classList.toggle('active',t===tab));
-  if(tab==='settings'){loadSettingsUI();renderBannedList();}
+  if(tab==='settings'){loadSettingsUI();renderBannedList();renderVerifiedList();}
   else if(tab==='log') renderActivityLog();
   else if(tab==='bans') renderBansTab();
   else if(tab==='accounts') loadAccountsTab();
@@ -1461,6 +1472,35 @@ window.saveFilterToggle=async function(){
   document.getElementById('filterStatus').textContent=filterEnabled?'on':'off';
   showToast(`bad word filter ${filterEnabled?'enabled':'disabled'}`);
 };
+window.addVerified=async function(){
+  const val=document.getElementById('verifyInput').value.trim().toLowerCase();
+  if(!val){showToast('enter a username');return;}
+  if(verifiedUsers.includes(val)){showToast(`~${val} is already verified`);return;}
+  verifiedUsers.push(val);
+  await setDoc(doc(db,'siteSettings','config'),{verifiedUsers},{merge:true});
+  document.getElementById('verifyInput').value='';
+  renderVerifiedList();
+  showToast(`~${val} verified`);
+};
+
+window.removeVerified=async function(name){
+  verifiedUsers=verifiedUsers.filter(v=>v!==name);
+  await setDoc(doc(db,'siteSettings','config'),{verifiedUsers},{merge:true});
+  renderVerifiedList();
+  showToast(`~${name} unverified`);
+};
+
+function renderVerifiedList(){
+  const el=document.getElementById('verified-list');
+  if(!el) return;
+  if(!verifiedUsers.length){el.innerHTML='<div style="color:var(--text-dim);font-size:11px;padding:8px 0;">no verified users</div>';return;}
+  el.innerHTML=verifiedUsers.map(v=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);gap:12px;">
+      <span style="color:var(--accent);font-size:12px;">~${esc(v)} <span class="verified-badge">✓</span></span>
+      <button class="admin-btn-delete-reply" onclick="removeVerified('${esc(v)}')">Remove</button>
+    </div>`).join('');
+}
+
 window.saveCustomWords=async function(){
   const val=document.getElementById('customWords').value;
   customWords=val.split(',').map(w=>w.trim().toLowerCase()).filter(Boolean);
