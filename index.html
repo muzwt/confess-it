@@ -250,6 +250,10 @@
   .profile-post-item:hover .profile-post-text{color:var(--accent);}
   .profile-post-text{font-size:14px;color:var(--text);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color 0.2s;}
   .profile-post-meta{display:flex;gap:12px;font-size:11px;color:var(--text-dim);}
+  .follow-btn{background:var(--accent);border:none;color:#0d0d0d;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:8px 20px;border-radius:10px;cursor:pointer;transition:opacity 0.15s;}
+  .follow-btn:hover{opacity:0.88;}
+  .follow-btn.following{background:transparent;border:1px solid var(--border);color:var(--text-muted);}
+  .follow-btn.following:hover{border-color:var(--red);color:var(--red);}
   .profile-close{background:none;border:1px solid var(--border);color:var(--text-muted);font-family:'DM Mono',monospace;font-size:11px;padding:6px 14px;cursor:pointer;border-radius:8px;transition:all 0.2s;float:right;}
   .profile-close:hover{border-color:#444;color:var(--text);}
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--bg3);border:1px solid var(--border);color:var(--text-muted);font-size:11px;letter-spacing:0.1em;padding:10px 20px;border-radius:10px;transition:transform 0.3s ease;z-index:9000;white-space:nowrap;}
@@ -592,7 +596,9 @@
       <div class="profile-stats">
         <div class="profile-stat"><div class="profile-stat-num" id="profilePostCount">0</div><div class="profile-stat-label">Posts</div></div>
         <div class="profile-stat"><div class="profile-stat-num" id="profileLikes">0</div><div class="profile-stat-label">Likes</div></div>
+        <div class="profile-stat"><div class="profile-stat-num" id="profileFollowers">0</div><div class="profile-stat-label">Followers</div></div>
       </div>
+      <div style="margin-top:14px;" id="profileFollowBtn"></div>
     </div>
     <div class="profile-posts">
       <div class="profile-posts-title">Posts</div>
@@ -634,6 +640,7 @@ let approvalMode = false, filterEnabled = false;
 let customWords = [], bannedNames = [], dailyTopic = '';
 let autoDeleteDays = 0, slowmodeDelay = 30;
 let verifiedUsers = [];
+let following = JSON.parse(localStorage.getItem('following')||'[]');
 
 // localStorage state
 const liked = JSON.parse(localStorage.getItem('liked')||'{}');
@@ -777,6 +784,15 @@ function updateNotifBadge(){
   badge.classList.toggle('visible',unread>0);
 }
 
+function addFollowNotification(confId, username, text){
+  notifications.unshift({id:Date.now(),confId,type:'follow',replyNick:username,replyText:text.slice(0,80),confText:'',time:Date.now(),read:false});
+  if(notifications.length>50) notifications=notifications.slice(0,50);
+  localStorage.setItem('notifications',JSON.stringify(notifications));
+  updateNotifBadge();
+  const badge=document.getElementById('notifBadge');
+  if(badge){badge.classList.remove('pulse');void badge.offsetWidth;badge.classList.add('pulse');}
+}
+
 function addNotification(confId,confText,replyText,replyNick){
   notifications.unshift({id:Date.now(),confId,confText:confText.slice(0,60),replyText:replyText.slice(0,80),replyNick,time:Date.now(),read:false});
   if(notifications.length>50) notifications=notifications.slice(0,50);
@@ -790,14 +806,24 @@ function renderNotifList(){
   const el=document.getElementById('notifList');
   if(!el) return;
   if(!notifications.length){el.innerHTML='<div class="notif-empty">no notifications yet</div>';return;}
-  el.innerHTML=notifications.map(n=>`
-    <div class="notif-item${n.read?'':' unread'}" onclick="goToNotif('${n.confId}','${n.id}')">
+  el.innerHTML=notifications.map(n=>{
+    if(n.type==='follow'){
+      return`<div class="notif-item${n.read?'':' unread'}" onclick="goToNotif('${n.confId}','${n.id}')">
+        <div class="notif-item-top">
+          <span class="notif-item-label">~${esc(n.replyNick)} posted</span>
+          <span class="notif-item-time">${timeAgo({toMillis:()=>n.time})}</span>
+        </div>
+        <div class="notif-item-preview">${esc(n.replyText)}</div>
+      </div>`;
+    }
+    return`<div class="notif-item${n.read?'':' unread'}" onclick="goToNotif('${n.confId}','${n.id}')">
       <div class="notif-item-top">
         <span class="notif-item-label">~${esc(n.replyNick)} replied</span>
         <span class="notif-item-time">${timeAgo({toMillis:()=>n.time})}</span>
       </div>
       <div class="notif-item-preview">${esc(n.replyText)}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 window.toggleNotifPanel = function(){
@@ -1062,8 +1088,27 @@ function autoDeleteOld(list){
 }
 
 // ── CONFESSIONS LISTENER ──────────────────────────────────────
+let knownConfessionIds = new Set();
 onSnapshot(query(collection(db,'confessions'),orderBy('createdAt','desc')),snap=>{
+  const prev = new Set(knownConfessionIds);
   allConfessions=snap.docs.map(d=>({id:d.id,...d.data()}));
+  // Check for new posts from followed users
+  if(currentUser && prev.size > 0){
+    snap.docs.forEach(d=>{
+      if(!prev.has(d.id)){
+        const data=d.data();
+        // Notify if posted by someone we follow, not anonymous, not pending
+        if(data.realUsername&&
+           data.nickname!=='anonymous'&&
+           !data.pending&&
+           data.realUsername!==currentUser.username&&
+           following.includes(data.realUsername.toLowerCase())){
+          addFollowNotification(d.id, data.realUsername, data.text||'');
+        }
+      }
+    });
+  }
+  knownConfessionIds = new Set(snap.docs.map(d=>d.id));
   autoDeleteOld(allConfessions);
   renderSorted();
 });
@@ -1594,9 +1639,12 @@ window.sharePost = function(id){
     showToast('link copied!');
   }
 };
+let currentProfileUser = null;
+
 window.openProfile = async function(username, e){
   if(e) e.stopPropagation();
   if(!username||username==='anonymous') return;
+  currentProfileUser = username.toLowerCase();
   document.getElementById('profileModal').classList.add('active');
   document.getElementById('profilePostsList').innerHTML='<div class="loading">loading...</div>';
   document.getElementById('profileAvatar').textContent=username[0].toUpperCase();
@@ -1604,6 +1652,14 @@ window.openProfile = async function(username, e){
   document.getElementById('profileJoined').textContent='';
   document.getElementById('profilePostCount').textContent='0';
   document.getElementById('profileLikes').textContent='0';
+  document.getElementById('profileFollowers').textContent='0';
+
+  // Show follow button (not on own profile)
+  const followBtnEl=document.getElementById('profileFollowBtn');
+  if(currentUser&&username.toLowerCase()!==currentUser.username.toLowerCase()){
+    const isFollowing=following.includes(username.toLowerCase());
+    followBtnEl.innerHTML=`<button class="follow-btn${isFollowing?' following':''}" id="followBtn" onclick="toggleFollow('${username.toLowerCase()}')">${isFollowing?'Following':'Follow'}</button>`;
+  } else { followBtnEl.innerHTML=''; }
 
   // Get user info
   try{
@@ -1611,6 +1667,7 @@ window.openProfile = async function(username, e){
     if(!userSnap.empty){
       const u=userSnap.docs[0].data();
       if(u.createdAt) document.getElementById('profileJoined').textContent='Joined '+new Date(u.createdAt.toMillis()).toLocaleDateString();
+      document.getElementById('profileFollowers').textContent=u.followers||0;
     }
   }catch(e){}
 
@@ -1625,7 +1682,7 @@ window.openProfile = async function(username, e){
     return;
   }
   document.getElementById('profilePostsList').innerHTML=posts.map(p=>`
-    <div class="profile-post-item" onclick="closeProfile();document.getElementById('card-${p.id}')?.scrollIntoView({behavior:'smooth',block:'center'})">
+    <div class="profile-post-item" onclick="closeProfile();setTimeout(()=>{const c=document.getElementById('card-${p.id}');if(c)c.scrollIntoView({behavior:'smooth',block:'center'})},100)">
       <div class="profile-post-text">${esc(p.text)}</div>
       <div class="profile-post-meta">
         <span style="display:flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> ${p.likes||0}</span>
@@ -1635,8 +1692,30 @@ window.openProfile = async function(username, e){
     </div>`).join('');
 };
 
+window.toggleFollow = async function(username){
+  if(!currentUser) return;
+  const isFollowing=following.includes(username);
+  if(isFollowing){
+    following=following.filter(f=>f!==username);
+    const snap=await getDocs(query(collection(db,'users'),where('username','==',username)));
+    if(!snap.empty) await updateDoc(snap.docs[0].ref,{followers:increment(-1)});
+    showToast('unfollowed ~'+username);
+  } else {
+    following.push(username);
+    const snap=await getDocs(query(collection(db,'users'),where('username','==',username)));
+    if(!snap.empty) await updateDoc(snap.docs[0].ref,{followers:increment(1)});
+    showToast('following ~'+username+'!');
+  }
+  localStorage.setItem('following',JSON.stringify(following));
+  const btn=document.getElementById('followBtn');
+  if(btn){ btn.classList.toggle('following',!isFollowing); btn.textContent=isFollowing?'Follow':'Following'; }
+  const snap2=await getDocs(query(collection(db,'users'),where('username','==',username)));
+  if(!snap2.empty) document.getElementById('profileFollowers').textContent=snap2.docs[0].data().followers||0;
+};
+
 window.closeProfile=function(){
   document.getElementById('profileModal').classList.remove('active');
+  currentProfileUser=null;
 };
 
 document.getElementById('profileModal').addEventListener('click',function(e){
