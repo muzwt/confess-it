@@ -73,6 +73,28 @@
   .reply-input::placeholder { color:var(--text-dim); font-style:italic; }
   .reply-submit { background:none; border:1px solid var(--border); color:var(--text-muted); font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.1em; padding:6px 14px; cursor:pointer; transition:all 0.2s; white-space:nowrap; margin-top:2px; }
   .reply-submit:hover { border-color:var(--accent); color:var(--accent); }
+  .slowmode-bar { height:2px; background:var(--accent-dim); border-radius:1px; overflow:hidden; margin-top:8px; display:none; }
+  .slowmode-bar.active { display:block; }
+  .slowmode-progress { height:100%; background:var(--accent); width:100%; transition:width 0.1s linear; }
+  .slowmode-msg { font-size:10px; color:var(--accent); letter-spacing:0.1em; margin-top:6px; display:none; }
+  .slowmode-msg.active { display:block; }
+  .admin-settings { padding:4px 0; }
+  .settings-row { display:flex; justify-content:space-between; align-items:center; padding:16px 0; border-bottom:1px solid var(--border); }
+  .settings-row:last-child { border-bottom:none; }
+  .settings-label { font-size:11px; color:var(--text); }
+  .settings-desc { font-size:10px; color:var(--text-muted); margin-top:3px; }
+  .settings-control { display:flex; align-items:center; gap:8px; }
+  .settings-input { background:var(--bg3); border:1px solid var(--border); color:var(--text); font-family:'DM Mono',monospace; font-size:12px; padding:6px 10px; outline:none; width:80px; text-align:center; transition:border-color 0.2s; }
+  .settings-input:focus { border-color:var(--admin); }
+  .settings-save { background:var(--admin-dim); border:1px solid var(--admin); color:var(--admin); font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.1em; padding:6px 14px; cursor:pointer; transition:all 0.2s; }
+  .settings-save:hover { background:rgba(232,162,74,0.2); }
+  .toggle-wrap { display:flex; align-items:center; gap:8px; }
+  .toggle { position:relative; width:36px; height:20px; }
+  .toggle input { opacity:0; width:0; height:0; }
+  .toggle-slider { position:absolute; inset:0; background:var(--bg3); border:1px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.2s; }
+  .toggle-slider:before { content:''; position:absolute; width:12px; height:12px; left:3px; top:3px; background:var(--text-muted); border-radius:50%; transition:all 0.2s; }
+  .toggle input:checked + .toggle-slider { background:var(--admin-dim); border-color:var(--admin); }
+  .toggle input:checked + .toggle-slider:before { transform:translateX(16px); background:var(--admin); }
   .admin-trigger { position:fixed; bottom:24px; right:24px; width:36px; height:36px; background:var(--bg2); border:1px solid var(--border); border-radius:2px; cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:0.3; transition:all 0.2s; z-index:50; }
   .admin-trigger:hover { opacity:1; border-color:var(--admin); }
   .admin-trigger svg { width:14px; height:14px; stroke:var(--admin); }
@@ -152,6 +174,8 @@
       <span class="char-count"><span id="charCount">0</span>/600</span>
       <button class="submit-btn" id="submitBtn" onclick="submitConfession()">Post it</button>
     </div>
+    <div class="slowmode-bar" id="slowmodeBar"><div class="slowmode-progress" id="slowmodeProgress"></div></div>
+    <div class="slowmode-msg" id="slowmodeMsg"></div>
   </div>
   <div class="feed-header">
     <span class="feed-title">Confessions</span>
@@ -176,9 +200,35 @@
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchTab('reported')">Reported</button>
       <button class="admin-tab" onclick="switchTab('all')">All posts</button>
+      <button class="admin-tab" onclick="switchTab('settings')">Settings</button>
     </div>
     <div class="admin-section active" id="tab-reported"><div id="reported-list"><div class="admin-empty">loading...</div></div></div>
     <div class="admin-section" id="tab-all"><div id="all-list"><div class="admin-empty">loading...</div></div></div>
+    <div class="admin-section" id="tab-settings">
+      <div class="admin-settings">
+        <div class="settings-row">
+          <div><div class="settings-label">Slowmode</div><div class="settings-desc">Seconds users must wait between posts</div></div>
+          <div class="settings-control">
+            <input type="number" class="settings-input" id="slowmodeSeconds" min="0" max="3600" value="30">
+            <button class="settings-save" onclick="saveSlowmode()">Save</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Bad word filter</div><div class="settings-desc">Replace bad words with *** automatically</div></div>
+          <div class="toggle-wrap">
+            <label class="toggle"><input type="checkbox" id="filterToggle" onchange="saveFilterToggle()"><span class="toggle-slider"></span></label>
+            <span style="font-size:10px;color:var(--text-muted)" id="filterStatus">off</span>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Custom blocked words</div><div class="settings-desc">Comma separated words to block (in addition to defaults)</div></div>
+          <div class="settings-control" style="flex-direction:column;align-items:flex-end;gap:8px">
+            <input type="text" id="customWords" placeholder="word1, word2, word3" style="width:220px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:11px;padding:6px 10px;outline:none;" onfocus="this.style.borderColor='var(--admin)'" onblur="this.style.borderColor='var(--border)'">
+            <button class="settings-save" onclick="saveCustomWords()">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -226,6 +276,52 @@
   let isAdmin = false;
   const liked = JSON.parse(localStorage.getItem('liked') || '{}');
   const reported = JSON.parse(localStorage.getItem('reported') || '{}');
+
+  // --- Settings (stored in localStorage) ---
+  let slowmodeDelay = parseInt(localStorage.getItem('slowmodeDelay')||'30');
+  let filterEnabled = localStorage.getItem('filterEnabled') === 'true';
+  let customWords = JSON.parse(localStorage.getItem('customWords')||'[]');
+  let lastPostTime = 0;
+
+  const DEFAULT_BAD_WORDS = ['fuck','shit','ass','bitch','bastard','dick','pussy','cunt','cock','nigger','nigga','faggot','fag','whore','slut','retard','kys'];
+
+  function getBadWords() { return [...DEFAULT_BAD_WORDS, ...customWords]; }
+
+  function filterText(text) {
+    if (!filterEnabled) return text;
+    let out = text;
+    getBadWords().forEach(w => {
+      if (!w.trim()) return;
+      const re = new RegExp(`\\b${w.trim()}\\b`, 'gi');
+      out = out.replace(re, m => '*'.repeat(m.length));
+    });
+    return out;
+  }
+
+  function startSlowmode() {
+    if (isAdmin || slowmodeDelay <= 0) return;
+    lastPostTime = Date.now();
+    const bar = document.getElementById('slowmodeBar');
+    const prog = document.getElementById('slowmodeProgress');
+    const msg = document.getElementById('slowmodeMsg');
+    const btn = document.getElementById('submitBtn');
+    bar.classList.add('active');
+    msg.classList.add('active');
+    btn.disabled = true;
+    const end = lastPostTime + slowmodeDelay * 1000;
+    const iv = setInterval(() => {
+      const remaining = Math.ceil((end - Date.now()) / 1000);
+      const pct = ((end - Date.now()) / (slowmodeDelay * 1000)) * 100;
+      prog.style.width = Math.max(0, pct) + '%';
+      msg.textContent = `slowmode — wait ${remaining}s`;
+      if (Date.now() >= end) {
+        clearInterval(iv);
+        bar.classList.remove('active');
+        msg.classList.remove('active');
+        btn.disabled = false;
+      }
+    }, 100);
+  }
 
   function timeAgo(ts) {
     if (!ts) return 'just now';
@@ -288,9 +384,11 @@
   });
 
   window.submitConfession = async function() {
+    if (!isAdmin && slowmodeDelay > 0 && Date.now() - lastPostTime < slowmodeDelay * 1000) return;
     const nick = document.getElementById('nickname').value.trim()||'anon';
-    const text = document.getElementById('confessionText').value.trim();
-    if (!text) return;
+    const rawText = document.getElementById('confessionText').value.trim();
+    if (!rawText) return;
+    const text = filterText(rawText);
     const btn = document.getElementById('submitBtn');
     btn.disabled = true; btn.textContent = 'posting...';
     try {
@@ -298,8 +396,10 @@
       document.getElementById('confessionText').value = '';
       document.getElementById('charCount').textContent = '0';
       showToast('confession posted');
-    } catch(e) { showToast('error posting'); }
-    btn.disabled = false; btn.textContent = 'Post it';
+      startSlowmode();
+    } catch(e) { showToast('error posting'); btn.disabled=false; }
+    if (isAdmin || slowmodeDelay <= 0) { btn.disabled = false; btn.textContent = 'Post it'; }
+    else btn.textContent = 'Post it';
   };
 
   window.toggleLike = async function(id, current) {
@@ -329,7 +429,8 @@
   window.submitReply = async function(confId) {
     const nick = document.getElementById('nickname').value.trim()||'anon';
     const input = document.getElementById(`reply-input-${confId}`);
-    const text = input.value.trim(); if (!text) return;
+    const rawText = input.value.trim(); if (!rawText) return;
+    const text = filterText(rawText);
     input.value = '';
     await addDoc(collection(db,'confessions',confId,'replies'),{nickname:nick,text,isAdmin:isAdmin,createdAt:serverTimestamp()});
     await updateDoc(doc(db,'confessions',confId),{replyCount:increment(1)});
@@ -367,9 +468,38 @@
   window.openAdmin = function() { document.getElementById('adminPanel').classList.add('active'); loadAdminData(); };
   window.closeAdmin = function() { document.getElementById('adminPanel').classList.remove('active'); };
   window.switchTab = function(tab) {
-    document.querySelectorAll('.admin-tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='reported')||(i===1&&tab==='all')));
+    document.querySelectorAll('.admin-tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='reported')||(i===1&&tab==='all')||(i===2&&tab==='settings')));
     document.getElementById('tab-reported').classList.toggle('active',tab==='reported');
     document.getElementById('tab-all').classList.toggle('active',tab==='all');
+    document.getElementById('tab-settings').classList.toggle('active',tab==='settings');
+    if (tab==='settings') loadSettingsUI();
+  };
+
+  function loadSettingsUI() {
+    document.getElementById('slowmodeSeconds').value = slowmodeDelay;
+    document.getElementById('filterToggle').checked = filterEnabled;
+    document.getElementById('filterStatus').textContent = filterEnabled ? 'on' : 'off';
+    document.getElementById('customWords').value = customWords.join(', ');
+  }
+
+  window.saveSlowmode = function() {
+    slowmodeDelay = parseInt(document.getElementById('slowmodeSeconds').value)||0;
+    localStorage.setItem('slowmodeDelay', slowmodeDelay);
+    showToast(`slowmode set to ${slowmodeDelay}s`);
+  };
+
+  window.saveFilterToggle = function() {
+    filterEnabled = document.getElementById('filterToggle').checked;
+    localStorage.setItem('filterEnabled', filterEnabled);
+    document.getElementById('filterStatus').textContent = filterEnabled ? 'on' : 'off';
+    showToast(`bad word filter ${filterEnabled?'enabled':'disabled'}`);
+  };
+
+  window.saveCustomWords = function() {
+    const val = document.getElementById('customWords').value;
+    customWords = val.split(',').map(w=>w.trim().toLowerCase()).filter(Boolean);
+    localStorage.setItem('customWords', JSON.stringify(customWords));
+    showToast(`${customWords.length} custom word${customWords.length!==1?'s':''} saved`);
   };
 
   async function loadAdminData() {
