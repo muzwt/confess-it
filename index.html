@@ -571,7 +571,6 @@ onSnapshot(doc(db,'siteSettings','config'), snap => {
   applyLockdown();
   applyDailyTopic();
 });
-let lastPostTime = 0;
 
 // Daily topic
 function applyDailyTopic(){
