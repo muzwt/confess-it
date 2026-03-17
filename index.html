@@ -1023,6 +1023,8 @@ function updateTagFilterBar(){
     `<span class="tag${activeTag===t?' active':''}" onclick="filterByTag('${esc(t)}')">#${esc(t)} <span style="opacity:0.6">${count}</span></span>`
   ).join('');
 }
+
+window.setSort = function(s){
   currentSort=s;
   document.querySelectorAll('.sort-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById(`tab-${s}`).classList.add('active');
