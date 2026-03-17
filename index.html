@@ -378,6 +378,10 @@
       <button class="sort-tab" id="tab-bookmarks" onclick="setSort('bookmarks')">Saved</button>
     </div>
   </div>
+  <div style="position:relative;margin-bottom:16px;">
+    <input type="text" id="searchInput" placeholder="Search posts..." oninput="handleSearch(this.value)" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;padding:9px 36px 9px 14px;outline:none;transition:border-color 0.2s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+    <svg style="position:absolute;right:12px;top:50%;transform:translateY(-50%);width:14px;height:14px;stroke:var(--text-muted);fill:none;stroke-width:2;pointer-events:none;" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  </div>
 
   <div id="tagFilterBar" class="tags-row" style="margin-bottom:16px;"></div>
   <div id="feed"><div class="loading">loading...</div></div>
@@ -1003,7 +1007,12 @@ function startSlowmode(){
 }
 
 // ── FEED ──────────────────────────────────────────────────────
-let activeTag = null;
+let searchQuery = '';
+
+window.handleSearch = function(val){
+  searchQuery = val.trim().toLowerCase();
+  renderSorted();
+};
 
 window.filterByTag = function(tag){
   if(activeTag===tag){ activeTag=null; } else { activeTag=tag; }
@@ -1034,6 +1043,7 @@ window.setSort = function(s){
 function renderSorted(){
   let list=[...allConfessions];
   if(activeTag) list=list.filter(c=>c.tags&&c.tags.includes(activeTag));
+  if(searchQuery) list=list.filter(c=>(c.text||'').toLowerCase().includes(searchQuery)||(c.nickname||'').toLowerCase().includes(searchQuery)||(c.tags||[]).some(t=>t.includes(searchQuery)));
   if(currentSort==='bookmarks') list=list.filter(c=>bookmarks[c.id]);
   if(currentSort==='hot'){
     const weekAgo=Date.now()-7*86400000;
