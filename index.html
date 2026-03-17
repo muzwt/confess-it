@@ -595,13 +595,20 @@
       <div class="profile-avatar" id="profileAvatar">?</div>
       <div id="profileAvatarEdit"></div>
       <div class="profile-username" id="profileUsername">—</div>
+      <div id="profileBioDisplay" style="font-size:13px;color:var(--text-muted);margin:4px 0 8px;line-height:1.5;"></div>
+      <div id="profileBioEdit"></div>
       <div class="profile-joined" id="profileJoined"></div>
       <div class="profile-stats">
         <div class="profile-stat"><div class="profile-stat-num" id="profilePostCount">0</div><div class="profile-stat-label">Posts</div></div>
         <div class="profile-stat"><div class="profile-stat-num" id="profileLikes">0</div><div class="profile-stat-label">Likes</div></div>
-        <div class="profile-stat"><div class="profile-stat-num" id="profileFollowers">0</div><div class="profile-stat-label">Followers</div></div>
+        <div class="profile-stat" style="cursor:pointer;" onclick="toggleFollowingList()"><div class="profile-stat-num" id="profileFollowers">0</div><div class="profile-stat-label">Followers</div></div>
+        <div class="profile-stat" style="cursor:pointer;" onclick="toggleFollowingList()"><div class="profile-stat-num" id="profileFollowingCount">0</div><div class="profile-stat-label">Following</div></div>
       </div>
       <div style="margin-top:14px;" id="profileFollowBtn"></div>
+    </div>
+    <div id="followingListSection" style="display:none;padding:16px 24px;border-bottom:1px solid var(--border);">
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;" id="followingListTitle">Following</div>
+      <div id="followingListItems"></div>
     </div>
     <div class="profile-posts">
       <div class="profile-posts-title">Posts</div>
@@ -1658,11 +1665,36 @@ function renderAvatarEl(el, username, avatarUrl){
   }
 }
 
+function bioEditHTML(currentBio){
+  return`<div style="margin-bottom:8px;">
+    <div style="font-size:10px;color:var(--text-muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Bio</div>
+    <div style="display:flex;gap:6px;">
+      <input type="text" id="bioInput" value="${esc(currentBio||'')}" placeholder="Write a short bio..." class="settings-text-input" style="flex:1;font-size:11px;box-shadow:none!important;" maxlength="120">
+      <button class="settings-save" onclick="saveBio()" style="white-space:nowrap;">Save</button>
+    </div>
+  </div>`;
+}
+
+window.saveBio = async function(){
+  const bio=document.getElementById('bioInput').value.trim();
+  const snap=await getDocs(query(collection(db,'users'),where('username','==',currentUser.username.toLowerCase())));
+  if(!snap.empty) await updateDoc(snap.docs[0].ref,{bio});
+  currentUser.bio=bio;
+  sessionStorage.setItem('currentUser',JSON.stringify(currentUser));
+  document.getElementById('profileBioDisplay').textContent=bio;
+  showToast('bio saved!');
+};
+
+window.toggleFollowingList = function(){
+  const sec=document.getElementById('followingListSection');
+  sec.style.display=sec.style.display==='none'?'block':'none';
+};
+
 function avatarEditHTML(){
   return`<div style="margin-bottom:12px;">
     <div style="font-size:10px;color:var(--text-muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Profile picture URL</div>
     <div style="display:flex;gap:6px;margin-bottom:6px;">
-      <input type="text" id="avatarUrlInput" placeholder="Paste image URL..." class="settings-text-input" style="flex:1;font-size:11px;">
+      <input type="text" id="avatarUrlInput" placeholder="Paste image URL..." class="settings-text-input" style="flex:1;font-size:11px;box-shadow:none!important;">
       <button class="settings-save" onclick="saveAvatar()" style="white-space:nowrap;">Save</button>
     </div>
     ${currentUser?.avatarUrl?`<button onclick="removeAvatar()" style="background:none;border:none;color:var(--text-dim);font-size:11px;cursor:pointer;padding:0;font-family:'DM Mono',monospace;">remove photo</button>`:''}
@@ -1701,7 +1733,10 @@ window.openProfile = async function(username, e){
   if(!username||username==='anonymous') return;
   currentProfileUser = username.toLowerCase();
   document.getElementById('profileModal').classList.add('active');
-  document.getElementById('profilePostsList').innerHTML='<div class="loading">loading...</div>';
+  document.getElementById('profileBioDisplay').textContent='';
+  document.getElementById('profileBioEdit').innerHTML='';
+  document.getElementById('profileFollowingCount').textContent='0';
+  document.getElementById('followingListSection').style.display='none';
   renderAvatarEl(document.getElementById('profileAvatar'),username,'');
   document.getElementById('profileAvatarEdit').innerHTML='';
   document.getElementById('profileUsername').innerHTML='~'+esc(username)+(verifiedUsers.includes(username.toLowerCase())?'<span class="verified-badge">✓</span>':'');
@@ -1712,15 +1747,29 @@ window.openProfile = async function(username, e){
 
   // Show follow button (not on own profile)
   const followBtnEl=document.getElementById('profileFollowBtn');
-  if(currentUser&&username.toLowerCase()!==currentUser.username.toLowerCase()){
+  const isOwnProfile=currentUser&&username.toLowerCase()===currentUser.username.toLowerCase();
+  if(currentUser&&!isOwnProfile){
     const isFollowing=following.includes(username.toLowerCase());
     followBtnEl.innerHTML=`<button class="follow-btn${isFollowing?' following':''}" id="followBtn" onclick="toggleFollow('${username.toLowerCase()}')">${isFollowing?'Following':'Follow'}</button>`;
   } else {
     followBtnEl.innerHTML='';
-    // Show edit avatar for own profile
-    if(currentUser&&username.toLowerCase()===currentUser.username.toLowerCase()){
+    if(isOwnProfile){
       document.getElementById('profileAvatarEdit').innerHTML=avatarEditHTML();
     }
+  }
+
+  // Show following list
+  const followingListItems=document.getElementById('followingListItems');
+  if(isOwnProfile && following.length){
+    document.getElementById('profileFollowingCount').textContent=following.length;
+    followingListItems.innerHTML=following.map(f=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+        <span class="card-nick" style="cursor:pointer;" onclick="openProfile('${esc(f)}',event)">~${esc(f)}</span>
+        <button class="admin-btn-delete-reply" onclick="toggleFollow('${esc(f)}')">Unfollow</button>
+      </div>`).join('');
+  } else if(isOwnProfile){
+    document.getElementById('profileFollowingCount').textContent='0';
+    followingListItems.innerHTML='<div style="color:var(--text-dim);font-size:12px;">not following anyone yet</div>';
   }
 
   // Get user info + avatar from Firebase
@@ -1730,6 +1779,14 @@ window.openProfile = async function(username, e){
       const u=userSnap.docs[0].data();
       if(u.createdAt) document.getElementById('profileJoined').textContent='Joined '+new Date(u.createdAt.toMillis()).toLocaleDateString();
       document.getElementById('profileFollowers').textContent=u.followers||0;
+      if(u.bio){
+        document.getElementById('profileBioDisplay').textContent=u.bio;
+      }
+      if(isOwnProfile){
+        currentUser.bio=u.bio||'';
+        sessionStorage.setItem('currentUser',JSON.stringify(currentUser));
+        document.getElementById('profileBioEdit').innerHTML=bioEditHTML(u.bio||'');
+      }
       if(u.avatarUrl){
         avatarCache[username.toLowerCase()]=u.avatarUrl;
         renderAvatarEl(document.getElementById('profileAvatar'),username,u.avatarUrl);
@@ -1781,6 +1838,7 @@ window.toggleFollow = async function(username){
   localStorage.setItem('following',JSON.stringify(following));
   const btn=document.getElementById('followBtn');
   if(btn){ btn.classList.toggle('following',!isFollowing); btn.textContent=isFollowing?'Follow':'Following'; }
+  document.getElementById('profileFollowingCount').textContent=following.length;
   const snap2=await getDocs(query(collection(db,'users'),where('username','==',username)));
   if(!snap2.empty) document.getElementById('profileFollowers').textContent=snap2.docs[0].data().followers||0;
 };
